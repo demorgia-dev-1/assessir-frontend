@@ -1,0 +1,165 @@
+import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import api from "@/lib/api";
+import Cookies from "js-cookie";
+
+const AUTH_COOKIE_KEY = "assessir_admin_token";
+
+export type SessionPayload = {
+  email?: string;
+  exp?: number;
+  iat?: number;
+  role?: string;
+  user_id?: number | string;
+};
+
+type AuthState = {
+  error: string | null;
+  isAuthenticated: boolean;
+  isInitialized: boolean;
+  isLoading: boolean;
+  session: SessionPayload | null;
+  token: string | null;
+};
+
+const initialState: AuthState = {
+  error: null,
+  isAuthenticated: false,
+  isInitialized: false,
+  isLoading: false,
+  session: null,
+  token: null
+};
+
+// Helper functions moved from api.ts
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(
+    normalized.length + ((4 - (normalized.length % 4)) % 4),
+    "="
+  );
+  return atob(padded);
+}
+
+function parseJwt(token: string): SessionPayload | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+    return JSON.parse(decodeBase64Url(payload)) as SessionPayload;
+  } catch {
+    return null;
+  }
+}
+
+export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
+  const token = Cookies.get(AUTH_COOKIE_KEY);
+  const session = token ? parseJwt(token) : null;
+
+  if (!token || !session) {
+    Cookies.remove(AUTH_COOKIE_KEY);
+    return {
+      isAuthenticated: false,
+      session: null,
+      token: null
+    };
+  }
+
+  return {
+    isAuthenticated: true,
+    session,
+    token
+  };
+});
+
+export const loginAdminAction = createAsyncThunk<
+  { session: SessionPayload | null; token: string },
+  { email: string; password: string },
+  { rejectValue: string }
+>("auth/login", async (credentials, { rejectWithValue }) => {
+  try {
+    const response = await api.post("/auth/login", credentials);
+    const token = response.data.token || response.data; // Handle both object and string response
+
+    if (typeof token !== "string") {
+      throw new Error("Invalid token received from server");
+    }
+
+    Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
+    const session = parseJwt(token);
+
+    return {
+      session,
+      token
+    };
+  } catch (error: any) {
+    return rejectWithValue(
+      error.response?.data?.message || error.message || "Unable to sign in right now."
+    );
+  }
+});
+
+export const logoutAdminAction = createAsyncThunk("auth/logout", async () => {
+  Cookies.remove(AUTH_COOKIE_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("user");
+  }
+});
+
+const authSlice = createSlice({
+  name: "auth",
+  initialState,
+  reducers: {
+    clearAuthError(state) {
+      state.error = null;
+    },
+    setSession(state, action: PayloadAction<SessionPayload | null>) {
+      state.session = action.payload;
+      state.isAuthenticated = Boolean(action.payload && state.token);
+    }
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(initializeAuth.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(initializeAuth.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isInitialized = true;
+        state.isAuthenticated = action.payload.isAuthenticated;
+        state.session = action.payload.session;
+        state.token = action.payload.token;
+      })
+      .addCase(initializeAuth.rejected, (state) => {
+        state.isLoading = false;
+        state.isInitialized = true;
+        state.isAuthenticated = false;
+        state.session = null;
+        state.token = null;
+      })
+      .addCase(loginAdminAction.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(loginAdminAction.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = true;
+        state.session = action.payload.session;
+        state.token = action.payload.token;
+      })
+      .addCase(loginAdminAction.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = false;
+        state.error = action.payload ?? "Unable to sign in right now.";
+      })
+      .addCase(logoutAdminAction.fulfilled, (state) => {
+        state.error = null;
+        state.isAuthenticated = false;
+        state.session = null;
+        state.token = null;
+      });
+  }
+});
+
+export const { clearAuthError, setSession } = authSlice.actions;
+export default authSlice.reducer;
