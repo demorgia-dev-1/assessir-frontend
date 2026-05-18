@@ -33,7 +33,7 @@ export default function UsersPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("candidate");
+  const [role, setRole] = useState("");
 
   // Side Panel state controls
   const [panelMode, setPanelMode] = useState<"create" | "view">("create");
@@ -74,7 +74,7 @@ export default function UsersPage() {
       setName("");
       setEmail("");
       setPassword("");
-      setRole("candidate");
+      setRole("manager");
     }
   };
 
@@ -160,12 +160,16 @@ export default function UsersPage() {
                             Admin
                           </span>
                         )}
+                        {user.role === "manager" && (
+                          <span className="inline-flex rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                            Manager
+                          </span>
+                        )}
                         {user.role === "assessor" && (
                           <span className="inline-flex rounded-full bg-sky-50 text-sky-700 border border-sky-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
                             Assessor
                           </span>
                         )}
-                      
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-500">
                         {user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, {
@@ -298,7 +302,8 @@ export default function UsersPage() {
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none"
                     disabled={creating}
                   >
-                 <option>Select a role</option> 
+                    <option value="">Select a role</option>
+                    <option value="manager">Manager</option>
                     <option value="assessor">Assessor</option>
                     <option value="admin">Admin</option>
                   </select>
@@ -358,12 +363,16 @@ export default function UsersPage() {
                           Admin
                         </span>
                       )}
+                      {selectedUser.role === "manager" && (
+                        <span className="inline-flex rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                          Manager
+                        </span>
+                      )}
                       {selectedUser.role === "assessor" && (
                         <span className="inline-flex rounded-full bg-sky-50 text-sky-700 border border-sky-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
                           Assessor
                         </span>
                       )}
-                     
                     </div>
                   </div>
 

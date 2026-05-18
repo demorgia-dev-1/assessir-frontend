@@ -65,7 +65,7 @@ export const fetchUsers = createAsyncThunk(
       }
       return data; // Expected formats: { users: [], totalUsers: 0, totalPages: 1, ... }
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to fetch users");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to fetch users");
     }
   }
 );
@@ -77,7 +77,7 @@ export const fetchUserById = createAsyncThunk(
       const response = await api.get(`/users/${id}`);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to fetch user details");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to fetch user details");
     }
   }
 );
@@ -89,7 +89,7 @@ export const createUser = createAsyncThunk(
       const response = await api.post("/users", data);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to create user");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to create user");
     }
   }
 );
