@@ -11,7 +11,7 @@ import {
   User
 } from "@/store/slices/users-slice";
 import { toast } from "react-toastify";
-import { FiEye, FiUserPlus, FiX, FiMail, FiUser, FiLock, FiCheck } from "react-icons/fi";
+import { FiEye, FiEyeOff, FiUserPlus, FiX, FiMail, FiUser, FiLock, FiCheck } from "react-icons/fi";
 
 export default function UsersPage() {
   const dispatch = useAppDispatch();
@@ -33,6 +33,7 @@ export default function UsersPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState("");
 
   // Side Panel state controls
@@ -283,14 +284,21 @@ export default function UsersPage() {
                       <FiLock className="h-4 w-4" />
                     </span>
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                      className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-12 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
                       required
                       disabled={creating}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-900 transition"
+                    >
+                      {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
+                    </button>
                   </div>
                 </div>
 

@@ -26,24 +26,7 @@ const navigationItems = [
       </svg>
     )
   },
-  {
-    href: "/users",
-    label: "Users",
-    icon: (
-      <svg
-        aria-hidden="true"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        viewBox="0 0 24 24"
-      >
-        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-        <circle cx="9.5" cy="7" r="4" />
-        <path d="M20 8v6M23 11h-6" />
-      </svg>
-    )
-  },
+  
   {
     href: "/sectors",
     label: "Sectors",
@@ -60,6 +43,42 @@ const navigationItems = [
         <path d="M5 21V8l7-5 7 5v13" />
         <path d="M9 13h6" />
         <path d="M9 17h6" />
+      </svg>
+    )
+  },
+  {
+    href: "/job-roles",
+    label: "Job Roles",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+        <circle cx="9.5" cy="7" r="4" />
+        <path d="M20 8v6M23 11h-6" />
+      </svg>
+    )
+  },
+  {
+    href: "/users",
+    label: "Users",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+        <circle cx="9.5" cy="7" r="4" />
+        <path d="M20 8v6M23 11h-6" />
       </svg>
     )
   },
@@ -140,12 +159,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <div className="relative z-10 flex h-full flex-col">
             <div>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12 text-lg font-semibold text-white backdrop-blur">
-                  A
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm shadow-slate-950/10">
+                  <img
+                    src="/logo.png"
+                    alt="Asses-Sir Logo"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.28em] text-cyan-200">
-                    Assessir
+                    Asses-Sir
                   </p>
                   <h1 className="mt-1 text-xl font-semibold text-white">
                     Admin Console
@@ -176,15 +199,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-slate-950/30 p-5 backdrop-blur-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-300">
+              {/* <p className="text-xs uppercase tracking-[0.22em] text-slate-300">
                 Session
-              </p>
+              </p> */}
               <p className="mt-2 text-sm font-semibold text-white">
                 {session?.role ?? "admin"}
               </p>
-              <p className="mt-2 text-sm text-slate-300">
+              {/* <p className="mt-2 text-sm text-slate-300">
                 Cookie-based session active for Assessir operations.
-              </p>
+              </p> */}
               <button
                 className="mt-5 w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/18"
                 onClick={handleLogout}

@@ -9,22 +9,23 @@ import {
   loginAdminAction,
 } from "@/store/slices/auth-slice";
 import { toast } from "react-toastify";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
 const trustSignals = [
   {
-    title: "Active Exams",
-    value: "128",
-    detail: "Live assessment sessions monitored.",
+    title: "AI Proctoring",
+    value: "24/7",
+    detail: "Continuous monitoring for secure online assessments.",
   },
   {
-    title: "Completion Rate",
-    value: "94%",
-    detail: "Stable candidate completion performance.",
+    title: "Candidate Security",
+    value: "100%",
+    detail: "Advanced authentication and anti-cheating workflow.",
   },
   {
-    title: "Review Time",
-    value: "3.4h",
-    detail: "Average assessor review turnaround.",
+    title: "Instant Reports",
+    value: "Real-Time",
+    detail: "Live analytics and performance insights for exams.",
   },
 ];
 
@@ -34,6 +35,7 @@ export function LoginScreen() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const { error, isAuthenticated, isInitialized, isLoading } = useAppSelector(
     (state) => state.auth
@@ -99,8 +101,13 @@ export function LoginScreen() {
         {/* LEFT SIDE */}
         <section className="hidden lg:block">
           <div className="max-w-2xl">
+            <img
+              src="/logo.png"
+              alt="Asses-Sir Logo"
+              className="h-28 w-28 ml-8 object-contain mix-blend-multiply"
+            />
             <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-700">
-              Assessir Admin
+              Asses-Sir Admin
             </p>
 
             <h1 className="mt-6 text-6xl font-bold leading-[1.05] tracking-tight text-slate-900">
@@ -191,15 +198,24 @@ export function LoginScreen() {
                   Password
                 </label>
 
-                <input
-                  autoComplete="current-password"
-                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
-                  onChange={handlePasswordChange}
-                  placeholder="Enter your password"
-                  required
-                  type="password"
-                  value={password}
-                />
+                <div className="relative">
+                  <input
+                    autoComplete="current-password"
+                    className="w-full rounded-2xl border border-slate-300 bg-white pl-4 pr-12 py-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+                    onChange={handlePasswordChange}
+                    placeholder="Enter your password"
+                    required
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-900 transition"
+                  >
+                    {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
 
               <button
@@ -219,7 +235,7 @@ export function LoginScreen() {
                 </p>
 
                 <p className="mt-2 text-sm font-semibold text-slate-900">
-                  Assessir
+                  Asses-Sir
                 </p>
               </div>
 

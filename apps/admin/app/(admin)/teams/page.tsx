@@ -6,6 +6,7 @@ import {
   fetchTeams,
   fetchTeamById,
   createTeam,
+  updateTeam,
   clearError,
   clearSelectedTeam,
   Team
@@ -13,7 +14,7 @@ import {
 import { fetchUsers } from "@/store/slices/users-slice";
 import { fetchSectors } from "@/store/slices/sector-slice";
 import { toast } from "react-toastify";
-import { FiEye, FiUsers, FiX, FiCheckSquare, FiPlusSquare, FiBriefcase, FiLayers } from "react-icons/fi";
+import { FiEye, FiUsers, FiX, FiCheckSquare, FiPlusSquare, FiBriefcase, FiLayers, FiEdit2 } from "react-icons/fi";
 
 export default function TeamsPage() {
   const dispatch = useAppDispatch();
@@ -23,6 +24,7 @@ export default function TeamsPage() {
     teams,
     loading,
     creating,
+    updating,
     viewLoading,
     selectedTeam,
     error: teamsError,
@@ -44,6 +46,13 @@ export default function TeamsPage() {
 
   // Side Panel state controls
   const [panelMode, setPanelMode] = useState<"create" | "view">("create");
+
+  // Edit Team state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [teamToEdit, setTeamToEdit] = useState<Team | null>(null);
+  const [editTeamName, setEditTeamName] = useState("");
+  const [editManagerId, setEditManagerId] = useState<string | number>("");
+  const [editSelectedSectorIds, setEditSelectedSectorIds] = useState<(string | number)[]>([]);
 
   useEffect(() => {
     dispatch(fetchTeams({ page: 1, limit: 10 }));
@@ -106,6 +115,54 @@ export default function TeamsPage() {
     dispatch(clearSelectedTeam());
   };
 
+  // Edit Team handlers
+  const handleEditTeamClick = (team: Team) => {
+    setTeamToEdit(team);
+    setEditTeamName(team.name);
+    setEditManagerId(team.manager_id);
+    setEditSelectedSectorIds(team.sector_ids || []);
+    setEditModalOpen(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setEditModalOpen(false);
+    setTeamToEdit(null);
+    setEditTeamName("");
+    setEditManagerId("");
+    setEditSelectedSectorIds([]);
+  };
+
+  const handleSectorToggleEdit = (sectorId: string | number) => {
+    setEditSelectedSectorIds((prev) =>
+      prev.includes(sectorId)
+        ? prev.filter((id) => id !== sectorId)
+        : [...prev, sectorId]
+    );
+  };
+
+  const handleUpdateTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTeamName.trim() || !editManagerId || !teamToEdit) {
+      toast.error("Team name and manager are required.");
+      return;
+    }
+
+    const payload = {
+      id: teamToEdit.id,
+      name: editTeamName.trim(),
+      manager_id: Number(editManagerId),
+      sector_ids: editSelectedSectorIds.map((id) => Number(id))
+    };
+
+    const resultAction = await dispatch(updateTeam(payload));
+    if (updateTeam.fulfilled.match(resultAction)) {
+      toast.success(`Team "${payload.name}" updated successfully!`);
+      handleCloseEditModal();
+      // Refresh current page
+      dispatch(fetchTeams({ page: currentPage, limit: 10 }));
+    }
+  };
+
   // Filter eligible managers (managers only)
   const eligibleManagers = users.filter(
     (user) => user.role === "manager"
@@ -142,7 +199,7 @@ export default function TeamsPage() {
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">ID</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Team Details</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Manager</th>
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Associated Sectors</th>
+                  {/* <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Associated Sectors</th> */}
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Joined Date</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
                 </tr>
@@ -181,7 +238,7 @@ export default function TeamsPage() {
                           <span className="text-xs text-slate-400 font-bold italic">No Manager Designated</span>
                         )}
                       </td>
-                      <td className="px-6 py-5">
+                      {/* <td className="px-6 py-5">
                         <div className="flex flex-wrap gap-1.5 max-w-xs">
                           {team.sectors && team.sectors.length > 0 ? (
                             team.sectors.map((sector) => (
@@ -192,11 +249,23 @@ export default function TeamsPage() {
                                 {sector.name}
                               </span>
                             ))
+                          ) : team.sector_ids && team.sector_ids.length > 0 ? (
+                            team.sector_ids.map((sectorId) => {
+                              const sector = sectors.find((s) => String(s.id) === String(sectorId));
+                              return sector ? (
+                                <span
+                                  key={sector.id}
+                                  className="inline-flex rounded-lg bg-slate-100 text-slate-800 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5"
+                                >
+                                  {sector.name}
+                                </span>
+                              ) : null;
+                            })
                           ) : (
                             <span className="text-xs text-slate-400 italic">None</span>
                           )}
                         </div>
-                      </td>
+                      </td> */}
                       <td className="px-6 py-5 text-sm text-slate-500">
                         {team.created_at ? new Date(team.created_at).toLocaleDateString(undefined, {
                           year: 'numeric',
@@ -205,13 +274,22 @@ export default function TeamsPage() {
                         }) : "N/A"}
                       </td>
                       <td className="px-6 py-5 text-right">
-                        <button
-                          onClick={() => handleViewTeam(team.id)}
-                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                          title="View Team Details"
-                        >
-                          <FiEye className="h-4.5 w-4.5" />
-                        </button>
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => handleViewTeam(team.id)}
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            title="View Team Details"
+                          >
+                            <FiEye className="h-4.5 w-4.5" />
+                          </button>
+                          <button
+                            onClick={() => handleEditTeamClick(team)}
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            title="Edit Team"
+                          >
+                            <FiEdit2 className="h-4.5 w-4.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -391,6 +469,18 @@ export default function TeamsPage() {
                             {sector.name}
                           </span>
                         ))
+                      ) : selectedTeam.sector_ids && selectedTeam.sector_ids.length > 0 ? (
+                        selectedTeam.sector_ids.map((sectorId) => {
+                          const sector = sectors.find((s) => String(s.id) === String(sectorId));
+                          return sector ? (
+                            <span
+                              key={sector.id}
+                              className="inline-flex rounded-lg bg-white border border-slate-200 text-slate-800 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1"
+                            >
+                              {sector.name}
+                            </span>
+                          ) : null;
+                        })
                       ) : (
                         <span className="text-xs text-slate-400 italic">No associated sectors</span>
                       )}
@@ -429,6 +519,106 @@ export default function TeamsPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Team Dedicated Modal */}
+      {editModalOpen && teamToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-900">
+                  <FiEdit2 className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">Edit Team</h2>
+              </div>
+              <button onClick={handleCloseEditModal} className="text-slate-400 hover:text-slate-900 transition p-1 rounded-lg hover:bg-slate-100">
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">Modify the team configuration, associated sectors, and manager.</p>
+            
+            <form onSubmit={handleUpdateTeamSubmit} className="mt-6 flex flex-col gap-4">
+              {/* Team Name */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team Name</label>
+                <input
+                  type="text"
+                  value={editTeamName}
+                  onChange={(e) => setEditTeamName(e.target.value)}
+                  placeholder="e.g. OPERATIONS DELTA"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                  required
+                  disabled={updating}
+                  autoFocus
+                />
+              </div>
+
+              {/* Team Manager */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team Manager</label>
+                <select
+                  value={editManagerId}
+                  onChange={(e) => setEditManagerId(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none"
+                  required
+                  disabled={updating}
+                >
+                  <option value="">Select a Manager...</option>
+                  {eligibleManagers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.name} ({manager.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Associated Sectors */}
+              <div className="flex flex-col gap-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Associated Sectors</label>
+                <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 space-y-2">
+                  {sectorsLoading ? (
+                    <p className="text-xs text-slate-400 italic p-1">Loading sectors...</p>
+                  ) : sectors.length > 0 ? (
+                    sectors.map((sector) => (
+                      <label key={sector.id} className="flex items-center gap-2.5 p-1 hover:bg-slate-50 rounded-lg cursor-pointer transition">
+                        <input
+                          type="checkbox"
+                          checked={editSelectedSectorIds.includes(sector.id)}
+                          onChange={() => handleSectorToggleEdit(sector.id)}
+                          className="h-4.5 w-4.5 rounded border-slate-300 text-slate-905 focus:ring-slate-900"
+                          disabled={updating}
+                        />
+                        <span className="text-xs text-slate-700 font-semibold">{sector.name}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400 italic p-1">No sectors registered.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseEditModal}
+                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+                  disabled={updating}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating || !editTeamName.trim() || !editManagerId}
+                  className="flex-1 rounded-2xl bg-slate-950 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:opacity-90 disabled:opacity-50 active:scale-[0.98]"
+                >
+                  {updating ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
