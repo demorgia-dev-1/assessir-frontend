@@ -128,7 +128,7 @@ export default function UsersPage() {
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">User Details</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Role</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Joined Date</th>
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
+                  {/* <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th> */}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -142,7 +142,7 @@ export default function UsersPage() {
                       </td>
                       <td className="px-6 py-5"><div className="h-6 w-20 rounded-full bg-slate-100" /></td>
                       <td className="px-6 py-5"><div className="h-4 w-24 rounded bg-slate-100" /></td>
-                      <td className="px-6 py-5"><div className="h-4 w-12 ml-auto rounded bg-slate-100" /></td>
+                      {/* <td className="px-6 py-5"><div className="h-4 w-12 ml-auto rounded bg-slate-100" /></td> */}
                     </tr>
                   ))
                 ) : users.length > 0 ? (
@@ -171,6 +171,11 @@ export default function UsersPage() {
                             Assessor
                           </span>
                         )}
+                        {user.role === "team_member" && (
+                          <span className="inline-flex rounded-full bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                            Team Member
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-500">
                         {user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, {
@@ -179,7 +184,7 @@ export default function UsersPage() {
                           day: 'numeric'
                         }) : "N/A"}
                       </td>
-                      <td className="px-6 py-5 text-right">
+                      {/* <td className="px-6 py-5 text-right">
                         <button
                           onClick={() => handleViewUser(user.id)}
                           className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
@@ -187,7 +192,7 @@ export default function UsersPage() {
                         >
                           <FiEye className="h-4.5 w-4.5" />
                         </button>
-                      </td>
+                      </td> */}
                     </tr>
                   ))
                 ) : (
@@ -313,6 +318,7 @@ export default function UsersPage() {
                     <option value="">Select a role</option>
                     <option value="manager">Manager</option>
                     <option value="assessor">Assessor</option>
+                    <option value="team_member">Team Member</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
@@ -379,6 +385,11 @@ export default function UsersPage() {
                       {selectedUser.role === "assessor" && (
                         <span className="inline-flex rounded-full bg-sky-50 text-sky-700 border border-sky-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
                           Assessor
+                        </span>
+                      )}
+                      {selectedUser.role === "team_member" && (
+                        <span className="inline-flex rounded-full bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                          Team Member
                         </span>
                       )}
                     </div>

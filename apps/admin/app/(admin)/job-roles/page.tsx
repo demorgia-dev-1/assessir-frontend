@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   fetchJobRoles,
-  createJobRole,
   updateJobRole,
   deleteJobRole,
   fetchJobRoleById,
@@ -14,16 +13,19 @@ import {
 } from "@/store/slices/jobrole-slice";
 import { fetchSectors } from "@/store/slices/sector-slice";
 import { toast } from "react-toastify";
-import { FiEye, FiEdit2, FiTrash2, FiX, FiAlertTriangle } from "react-icons/fi";
+import { FiEye, FiEdit2, FiTrash2, FiX, FiAlertTriangle, FiUploadCloud } from "react-icons/fi";
+import ImportJobRolesModal from "@/components/ImportJobRolesModal";
 
 export default function JobRolesPage() {
   const dispatch = useAppDispatch();
+  
+  // Import Modal State
+  const [importModalOpen, setImportModalOpen] = useState(false);
   
   // Job Roles State
   const { 
     jobRoles, 
     loading, 
-    creating,
     updating,
     deleting,
     viewLoading,
@@ -39,16 +41,11 @@ export default function JobRolesPage() {
   // Sectors State (for sector selection dropdown)
   const { sectors } = useAppSelector((state) => state.sectors);
   
-  // Create Job Role form state
-  const [name, setName] = useState("");
-  const [qpCode, setQpCode] = useState("");
+  // Sector selection for bulk import
   const [sectorId, setSectorId] = useState("");
-  const [totalPracticalMarks, setTotalPracticalMarks] = useState("");
-  const [totalTheoryMarks, setTotalTheoryMarks] = useState("");
-  const [totalVivaMarks, setTotalVivaMarks] = useState("");
   
-  // Side Panel state controls (create & view modes)
-  const [panelMode, setPanelMode] = useState<"create" | "view">("create");
+  // Side Panel state controls (import & view modes)
+  const [panelMode, setPanelMode] = useState<"import" | "view">("import");
   
   // Edit Job Role Modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -82,41 +79,8 @@ export default function JobRolesPage() {
     dispatch(fetchJobRoles({ page, limit: 10 }));
   };
 
-  const handleCreateJobRole = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !qpCode.trim() || !sectorId) {
-      toast.error("Please enter a name, QP code and select a sector.");
-      return;
-    }
-
-    const payload: any = {
-      name: name.trim(),
-      qp_code: qpCode.trim(),
-      sector_id: Number(sectorId)
-    };
-
-    if (totalPracticalMarks.trim() !== "") {
-      payload.total_practical_marks = Number(totalPracticalMarks);
-    }
-    if (totalTheoryMarks.trim() !== "") {
-      payload.total_theory_marks = Number(totalTheoryMarks);
-    }
-    if (totalVivaMarks.trim() !== "") {
-      payload.total_viva_marks = Number(totalVivaMarks);
-    }
-
-    const resultAction = await dispatch(createJobRole(payload));
-    if (createJobRole.fulfilled.match(resultAction)) {
-      toast.success(`Job Role "${payload.name}" registered successfully!`);
-      // Reset form
-      setName("");
-      setQpCode("");
-      setSectorId("");
-      setTotalPracticalMarks("");
-      setTotalTheoryMarks("");
-      setTotalVivaMarks("");
-    }
-  };
+  // Get selected sector name for display
+  const selectedSectorName = sectors.find(s => String(s.id) === sectorId)?.name || "";
 
   // View Details Mode
   const handleViewJobRole = (id: string | number) => {
@@ -125,7 +89,7 @@ export default function JobRolesPage() {
   };
 
   const handleCloseViewMode = () => {
-    setPanelMode("create");
+    setPanelMode("import");
     dispatch(clearSelectedJobRole());
   };
 
@@ -226,9 +190,11 @@ export default function JobRolesPage() {
                Job Roles
             </h1>
            </div>
-           <div className="text-right">
-             <p className="text-3xl font-bold text-slate-950">{totalJobRoles}</p>
-             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Registered Job Roles</p>
+           <div className="flex items-center gap-6">
+              <div className="border-l border-slate-200 pl-6 text-right">
+                <p className="text-3xl font-bold text-slate-950">{totalJobRoles}</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Registered Job Roles</p>
+              </div>
            </div>
         </div>
       </header>
@@ -346,46 +312,19 @@ export default function JobRolesPage() {
 
         {/* Side Panel */}
         <div className="flex flex-col gap-6">
-          {panelMode === "create" && (
+          {panelMode === "import" && (
             <div className="glass-panel rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/5 animate-in fade-in duration-300">
-              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Create Job Role</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Define a new operational role with sector link and maximum scoring parameters.</p>
+              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Bulk Import Job Roles</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">Select a sector first, then import job roles from an Excel file.</p>
               
-              <form onSubmit={handleCreateJobRole} className="mt-6 flex flex-col gap-4">
-                {/* Name */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Job Role Name</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. SOFTWARE ENGINEER"
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
-                    disabled={creating}
-                  />
-                </div>
-
-                {/* QP Code */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">QP Code</label>
-                  <input
-                    type="text"
-                    value={qpCode}
-                    onChange={(e) => setQpCode(e.target.value)}
-                    placeholder="e.g. SSC/Q0501"
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
-                    disabled={creating}
-                  />
-                </div>
-
+              <div className="mt-6 flex flex-col gap-5">
                 {/* Sector Select Dropdown */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Sector</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Select Sector</label>
                   <select
                     value={sectorId}
                     onChange={(e) => setSectorId(e.target.value)}
                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none cursor-pointer"
-                    disabled={creating}
                   >
                     <option value="">Select a Sector...</option>
                     {sectors.map((sector) => (
@@ -396,57 +335,35 @@ export default function JobRolesPage() {
                   </select>
                 </div>
 
-                {/* Marks breakdown */}
-                <div className="grid grid-cols-3 gap-2 mt-1">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-tight text-slate-400 text-center block w-full whitespace-nowrap">Theory Marks</label>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="e.g 20"
-                      value={totalTheoryMarks}
-                      onWheel={(e)=>e.currentTarget.blur()}
-                      onChange={(e) => setTotalTheoryMarks(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-center text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-950/5"
-                      disabled={creating}
-                    />
+                {/* Selected sector badge */}
+                {sectorId && (
+                  <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 animate-in fade-in duration-200">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Selected Sector</p>
+                    <p className="mt-1 text-sm font-bold text-slate-950">{selectedSectorName}</p>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-tight text-slate-400 text-center block w-full whitespace-nowrap">Practical Marks</label>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="e.g 20"
-                      value={totalPracticalMarks}
-                      onWheel={(e)=>e.currentTarget.blur()}
-                      onChange={(e) => setTotalPracticalMarks(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-center text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-950/5"
-                      disabled={creating}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-tight text-slate-400 text-center block w-full whitespace-nowrap">Viva Marks</label>
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="e.g 20"
-                      value={totalVivaMarks}
-                      onWheel={(e)=>e.currentTarget.blur()}
-                      onChange={(e) => setTotalVivaMarks(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-center text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-950/5"
-                      disabled={creating}
-                    />
-                  </div>
-                </div>
+                )}
 
+                {/* Import Button */}
                 <button
-                  type="submit"
-                  disabled={creating || !name.trim() || !sectorId}
-                  className="mt-4 rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:opacity-90 disabled:opacity-50 active:scale-[0.98]"
+                  type="button"
+                  onClick={() => {
+                    if (!sectorId) {
+                      toast.error("Please select a sector first.");
+                      return;
+                    }
+                    setImportModalOpen(true);
+                  }}
+                  disabled={!sectorId}
+                  className="mt-2 inline-flex items-center justify-center gap-2.5 rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
                 >
-                  {creating ? "Processing..." : "Register Job Role"}
+                  <FiUploadCloud className="h-4.5 w-4.5" />
+                  Bulk Import Excel
                 </button>
-              </form>
+
+                {!sectorId && (
+                  <p className="text-xs text-slate-400 text-center -mt-2">Select a sector above to enable import</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -698,6 +615,14 @@ export default function JobRolesPage() {
           </div>
         </div>
       )}
+
+      {/* Bulk Import Modal */}
+      <ImportJobRolesModal 
+        isOpen={importModalOpen} 
+        onClose={() => setImportModalOpen(false)}
+        sectorId={Number(sectorId)}
+        sectorName={selectedSectorName}
+      />
     </section>
   );
 }

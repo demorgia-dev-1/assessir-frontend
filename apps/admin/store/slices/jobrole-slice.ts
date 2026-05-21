@@ -41,6 +41,10 @@ export type GetJobRolesParams = {
   name?: string;
 };
 
+type JobRoleApiShape = JobRole & {
+  Code?: string;
+};
+
 interface JobRoleState {
   jobRoles: JobRole[];
   totalJobRoles: number;
@@ -75,6 +79,25 @@ const initialState: JobRoleState = {
   error: null,
 };
 
+function normalizeMarks(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  return numeric / 100;
+}
+
+function normalizeJobRole(jobRole: JobRoleApiShape): JobRole {
+  return {
+    ...jobRole,
+    qp_code: jobRole.qp_code ?? jobRole.Code,
+    total_theory_marks: normalizeMarks(jobRole.total_theory_marks),
+    total_practical_marks: normalizeMarks(jobRole.total_practical_marks),
+    total_viva_marks: normalizeMarks(jobRole.total_viva_marks),
+  };
+}
+
 export const fetchJobRoles = createAsyncThunk(
   "jobRoles/fetchJobRoles",
   async (params: GetJobRolesParams = {}, { rejectWithValue }) => {
@@ -107,10 +130,22 @@ export const createJobRole = createAsyncThunk(
   "jobRoles/createJobRole",
   async (data: CreateJobRoleInput, { rejectWithValue }) => {
     try {
-      const response = await api.post("/jobroles", data);
+      const response = await api.post("/jobroles", [data]);
       return response.data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to create job role");
+    }
+  }
+);
+
+export const createJobRolesBulk = createAsyncThunk(
+  "jobRoles/createJobRolesBulk",
+  async (data: any[], { rejectWithValue }) => {
+    try {
+      const response = await api.post("/jobroles", data);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to bulk import job roles");
     }
   }
 );
@@ -158,8 +193,8 @@ const jobRoleSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchJobRoles.fulfilled, (state, action: PayloadAction<{
-        jobroles?: JobRole[];
-        jobRoles?: JobRole[];
+        jobroles?: JobRoleApiShape[];
+        jobRoles?: JobRoleApiShape[];
         totalJobRoles?: number;
         total?: number;
         totalPages?: number;
@@ -167,18 +202,18 @@ const jobRoleSlice = createSlice({
         limit?: number;
         hasNext?: boolean;
         hasPrev?: boolean;
-      } | JobRole[]>) => {
+      } | JobRoleApiShape[]>) => {
         state.loading = false;
         if (Array.isArray(action.payload)) {
-          state.jobRoles = action.payload;
-          state.totalJobRoles = action.payload.length;
+          state.jobRoles = action.payload.map(normalizeJobRole);
+          state.totalJobRoles = state.jobRoles.length;
           state.totalPages = 1;
           state.currentPage = 1;
           state.hasNext = false;
           state.hasPrev = false;
         } else {
           const payload = action.payload;
-          state.jobRoles = payload.jobroles || payload.jobRoles || [];
+          state.jobRoles = (payload.jobroles || payload.jobRoles || []).map(normalizeJobRole);
           state.totalJobRoles = payload.totalJobRoles ?? payload.total ?? (state.jobRoles.length);
           state.totalPages = payload.totalPages ?? 1;
           state.currentPage = payload.page ?? 1;
@@ -197,9 +232,9 @@ const jobRoleSlice = createSlice({
         state.error = null;
         state.selectedJobRole = null;
       })
-      .addCase(fetchJobRoleById.fulfilled, (state, action: PayloadAction<JobRole>) => {
+      .addCase(fetchJobRoleById.fulfilled, (state, action: PayloadAction<JobRoleApiShape>) => {
         state.viewLoading = false;
-        state.selectedJobRole = action.payload;
+        state.selectedJobRole = normalizeJobRole(action.payload);
       })
       .addCase(fetchJobRoleById.rejected, (state, action) => {
         state.viewLoading = false;
@@ -210,16 +245,22 @@ const jobRoleSlice = createSlice({
         state.creating = true;
         state.error = null;
       })
-      .addCase(createJobRole.fulfilled, (state, action: PayloadAction<JobRole>) => {
+      .addCase(createJobRole.fulfilled, (state) => {
         state.creating = false;
-        const newJobRole = {
-          ...action.payload,
-          created_at: action.payload.created_at || new Date().toISOString()
-        };
-        state.jobRoles.unshift(newJobRole);
-        state.totalJobRoles += 1;
       })
       .addCase(createJobRole.rejected, (state, action) => {
+        state.creating = false;
+        state.error = action.payload as string;
+      })
+      // Bulk Create Job Roles
+      .addCase(createJobRolesBulk.pending, (state) => {
+        state.creating = true;
+        state.error = null;
+      })
+      .addCase(createJobRolesBulk.fulfilled, (state) => {
+        state.creating = false;
+      })
+      .addCase(createJobRolesBulk.rejected, (state, action) => {
         state.creating = false;
         state.error = action.payload as string;
       })
@@ -228,14 +269,15 @@ const jobRoleSlice = createSlice({
         state.updating = true;
         state.error = null;
       })
-      .addCase(updateJobRole.fulfilled, (state, action: PayloadAction<JobRole>) => {
+      .addCase(updateJobRole.fulfilled, (state, action: PayloadAction<JobRoleApiShape>) => {
         state.updating = false;
-        const index = state.jobRoles.findIndex(jr => jr.id === action.payload.id);
+        const normalizedJobRole = normalizeJobRole(action.payload);
+        const index = state.jobRoles.findIndex(jr => jr.id === normalizedJobRole.id);
         if (index !== -1) {
-          state.jobRoles[index] = action.payload;
+          state.jobRoles[index] = normalizedJobRole;
         }
-        if (state.selectedJobRole?.id === action.payload.id) {
-          state.selectedJobRole = action.payload;
+        if (state.selectedJobRole?.id === normalizedJobRole.id) {
+          state.selectedJobRole = normalizedJobRole;
         }
       })
       .addCase(updateJobRole.rejected, (state, action) => {
