@@ -13,15 +13,12 @@ import {
   FiAlertTriangle,
   FiCheckCircle,
   FiX,
-  FiBookOpen,
-  FiHelpCircle,
   FiFileText,
   FiCheck,
   FiLayers,
 } from "react-icons/fi";
 import {
   downloadTemplate,
-  downloadNosOnlyTemplate,
   parseExcelFile,
   ParsedJobRole,
   ValidationError,
@@ -88,12 +85,12 @@ export default function ImportJobRolesModal({
   };
 
   const processFile = (selectedFile: File) => {
-    const isExcel =
+    const isXlsx =
       selectedFile.type ===
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       selectedFile.name.endsWith(".xlsx");
 
-    if (!isExcel) {
+    if (!isXlsx) {
       toast.error("Please upload a valid Excel file (.xlsx)");
       return;
     }
@@ -137,13 +134,17 @@ export default function ImportJobRolesModal({
         total_theory_marks: nos.total_theory_marks,
         total_practical_marks: nos.total_practical_marks,
         total_viva_marks: nos.total_viva_marks,
-        pc_list: nos.pc_list.map((pc) => ({
-          name: pc.name,
-          code: pc.code,
-          total_theory_marks: pc.total_theory_marks,
-          total_practical_marks: pc.total_practical_marks,
-          total_viva_marks: pc.total_viva_marks,
-        })),
+        ...(nos.pc_list.length > 0
+          ? {
+              pc_list: nos.pc_list.map((pc) => ({
+                name: pc.name,
+                code: pc.code,
+                total_theory_marks: pc.total_theory_marks,
+                total_practical_marks: pc.total_practical_marks,
+                total_viva_marks: pc.total_viva_marks,
+              })),
+            }
+          : {}),
       })),
     }));
 
@@ -248,25 +249,18 @@ export default function ImportJobRolesModal({
                       Don't have the template yet?
                     </h4>
                     <p className="text-xs text-slate-500 mt-0.5 max-w-md">
-                      Download the full template if you have PCs, or use the
-                      NOS-only template when you do not want to enter PCs.
+                      Download the single Excel template based on the workbook
+                      structure you provided.
                     </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={downloadNosOnlyTemplate}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-250 bg-white px-4 py-3 text-xs font-bold text-slate-800 transition hover:bg-slate-50 active:scale-[0.98] shadow-sm"
-                  >
-                    <FiDownload className="h-4 w-4" /> NOS-only Template
-                  </button>
+                <div className="flex shrink-0">
                   <button
                     type="button"
                     onClick={downloadTemplate}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-250 bg-white px-4 py-3 text-xs font-bold text-slate-800 transition hover:bg-slate-50 active:scale-[0.98] shadow-sm"
                   >
-                    <FiDownload className="h-4 w-4" /> NOS-PC Template
+                    <FiDownload className="h-4 w-4" /> Download Template
                   </button>
                 </div>
               </div>
@@ -280,8 +274,9 @@ export default function ImportJobRolesModal({
                   <li className="flex items-start gap-2">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-900" />
                     <span>
-                      Use one sheet with Job Role and NOS columns, and add PC
-                      columns only when you are using the full template.
+                      Use the workbook sheets exactly as provided:{" "}
+                      <strong>Jobrole</strong>, <strong>Nos</strong>, and
+                      optional <strong>Pc</strong>.
                     </span>
                   </li>
                   <li className="flex items-start gap-2">
@@ -294,8 +289,9 @@ export default function ImportJobRolesModal({
                   <li className="flex items-start gap-2">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-900" />
                     <span>
-                      When you start a new Job Role or a new NOS, fill its name,
-                      code, and marks once on that first row.
+                      If the <strong>Pc</strong> sheet is removed, or PC fields
+                      are left blank, PCs will be ignored and not sent in the
+                      import payload.
                     </span>
                   </li>
                   <li className="flex items-start gap-2">

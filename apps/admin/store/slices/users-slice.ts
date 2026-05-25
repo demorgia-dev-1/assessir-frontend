@@ -6,6 +6,7 @@ export type User = {
   email: string;
   name: string;
   role: string; // e.g. "admin" | "assessor" | "candidate"
+  team_id?: string | number;
   created_at?: string;
   updated_at?: string;
 };
@@ -15,6 +16,7 @@ export type CreateUserInput = {
   name: string;
   password?: string;
   role: string;
+  team_id?: string | number;
 };
 
 export type GetUsersParams = {

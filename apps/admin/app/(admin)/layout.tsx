@@ -65,6 +65,23 @@ const navigationItems = [
     )
   },
   {
+    href: "/topics",
+    label: "Topics",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v9A2.5 2.5 0 0 1 16.5 19h-9A2.5 2.5 0 0 1 5 16.5z" />
+        <path d="M8 9h8M8 12h8M8 15h5" />
+      </svg>
+    )
+  },
+  {
     href: "/users",
     label: "Users",
     icon: (

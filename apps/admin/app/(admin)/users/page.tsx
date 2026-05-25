@@ -10,6 +10,7 @@ import {
   clearSelectedUser,
   User
 } from "@/store/slices/users-slice";
+import { fetchTeams } from "@/store/slices/teams-slice";
 import { toast } from "react-toastify";
 import { FiEye, FiEyeOff, FiUserPlus, FiX, FiMail, FiUser, FiLock, FiCheck } from "react-icons/fi";
 
@@ -28,6 +29,7 @@ export default function UsersPage() {
     hasNext,
     hasPrev
   } = useAppSelector((state) => state.users);
+  const { teams, loading: teamsLoading } = useAppSelector((state) => state.teams);
 
   // Form states
   const [name, setName] = useState("");
@@ -35,12 +37,14 @@ export default function UsersPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState("");
+  const [teamId, setTeamId] = useState("");
 
   // Side Panel state controls
   const [panelMode, setPanelMode] = useState<"create" | "view">("create");
 
   useEffect(() => {
     dispatch(fetchUsers({ page: 1, limit: 10 }));
+    dispatch(fetchTeams({ page: 1, limit: 100 }));
   }, [dispatch]);
 
   useEffect(() => {
@@ -61,11 +65,22 @@ export default function UsersPage() {
       return;
     }
 
+    if (!role) {
+      toast.error("Please select an access role.");
+      return;
+    }
+
+    if (role === "team_member" && !teamId) {
+      toast.error("Please select a team for this team member.");
+      return;
+    }
+
     const payload = {
       name: name.trim(),
       email: email.trim(),
       password,
-      role
+      role,
+      ...(role === "team_member" ? { team_id: Number(teamId) } : {})
     };
 
     const resultAction = await dispatch(createUser(payload));
@@ -75,7 +90,15 @@ export default function UsersPage() {
       setName("");
       setEmail("");
       setPassword("");
-      setRole("manager");
+      setRole("");
+      setTeamId("");
+    }
+  };
+
+  const handleRoleChange = (nextRole: string) => {
+    setRole(nextRole);
+    if (nextRole !== "team_member") {
+      setTeamId("");
     }
   };
 
@@ -311,9 +334,10 @@ export default function UsersPage() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Access Role</label>
                   <select
                     value={role}
-                    onChange={(e) => setRole(e.target.value)}
+                    onChange={(e) => handleRoleChange(e.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none"
                     disabled={creating}
+                    required
                   >
                     <option value="">Select a role</option>
                     <option value="manager">Manager</option>
@@ -323,9 +347,38 @@ export default function UsersPage() {
                   </select>
                 </div>
 
+                {role === "team_member" && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team</label>
+                    <select
+                      value={teamId}
+                      onChange={(e) => setTeamId(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none"
+                      disabled={creating || teamsLoading}
+                      required
+                    >
+                      <option value="">
+                        {teamsLoading ? "Loading teams..." : "Select a team"}
+                      </option>
+                      {teams.map((team) => (
+                        <option key={team.id} value={String(team.id)}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={creating || !name.trim() || !email.trim() || !password.trim()}
+                  disabled={
+                    creating ||
+                    !name.trim() ||
+                    !email.trim() ||
+                    !password.trim() ||
+                    !role ||
+                    (role === "team_member" && !teamId)
+                  }
                   className="mt-2 rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:opacity-90 disabled:opacity-50 active:scale-[0.98]"
                 >
                   {creating ? "Creating..." : "Register User"}
