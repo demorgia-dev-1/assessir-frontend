@@ -10,8 +10,8 @@ import {
   clearError,
   clearSelectedJobRole,
   JobRole,
-} from "@/store/slices/jobrole-slice";
-import { fetchSectors } from "@/store/slices/sector-slice";
+} from "@/store/slices/jobroles-slice";
+import { fetchSectors } from "@/store/slices/sectors-slice";
 import { toast } from "react-toastify";
 import {
   FiEye,

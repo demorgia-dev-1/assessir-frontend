@@ -4,10 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import {
-  initializeAuth,
-  logoutAdminAction
-} from "@/store/slices/auth-slice";
+import { initializeAuth, logoutAdminAction } from "@/store/slices/auth-slice";
 
 const navigationItems = [
   {
@@ -24,9 +21,9 @@ const navigationItems = [
       >
         <path d="M4 13.2c0-.64 0-.96.08-1.26a2 2 0 0 1 .43-.78c.21-.23.5-.4 1.06-.76l5.3-3.36c.5-.32.76-.48 1.05-.54a2 2 0 0 1 .76 0c.29.06.55.22 1.05.54l5.3 3.36c.56.36.85.53 1.06.76.2.22.35.48.43.78.08.3.08.62.08 1.26v4.04c0 1.12 0 1.68-.22 2.1a2 2 0 0 1-.88.88c-.42.22-.98.22-2.1.22H8.2c-1.12 0-1.68 0-2.1-.22a2 2 0 0 1-.88-.88c-.22-.42-.22-.98-.22-2.1z" />
       </svg>
-    )
+    ),
   },
-  
+
   {
     href: "/sectors",
     label: "Sectors",
@@ -44,7 +41,7 @@ const navigationItems = [
         <path d="M9 13h6" />
         <path d="M9 17h6" />
       </svg>
-    )
+    ),
   },
   {
     href: "/job-roles",
@@ -62,7 +59,7 @@ const navigationItems = [
         <circle cx="9.5" cy="7" r="4" />
         <path d="M20 8v6M23 11h-6" />
       </svg>
-    )
+    ),
   },
   {
     href: "/topics",
@@ -79,7 +76,23 @@ const navigationItems = [
         <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v9A2.5 2.5 0 0 1 16.5 19h-9A2.5 2.5 0 0 1 5 16.5z" />
         <path d="M8 9h8M8 12h8M8 15h5" />
       </svg>
-    )
+    ),
+  },
+  {
+    href: "/questions",
+    label: "Questions",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-4l-3 3z" />
+      </svg>
+    ),
   },
   {
     href: "/users",
@@ -97,7 +110,7 @@ const navigationItems = [
         <circle cx="9.5" cy="7" r="4" />
         <path d="M20 8v6M23 11h-6" />
       </svg>
-    )
+    ),
   },
   {
     href: "/teams",
@@ -113,26 +126,26 @@ const navigationItems = [
       >
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
       </svg>
-    )
+    ),
   },
- 
-  {
-    href: "/reports",
-    label: "Reports",
-    icon: (
-      <svg
-        aria-hidden="true"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        viewBox="0 0 24 24"
-      >
-        <path d="M4 19.5V6.75A1.75 1.75 0 0 1 5.75 5h12.5A1.75 1.75 0 0 1 20 6.75V19.5" />
-        <path d="M8 10h8M8 14h8M8 18h5" />
-      </svg>
-    )
-  }
+
+  // {
+  //   href: "/reports",
+  //   label: "Reports",
+  //   icon: (
+  //     <svg
+  //       aria-hidden="true"
+  //       className="h-5 w-5"
+  //       fill="none"
+  //       stroke="currentColor"
+  //       strokeWidth="1.8"
+  //       viewBox="0 0 24 24"
+  //     >
+  //       <path d="M4 19.5V6.75A1.75 1.75 0 0 1 5.75 5h12.5A1.75 1.75 0 0 1 20 6.75V19.5" />
+  //       <path d="M8 10h8M8 14h8M8 18h5" />
+  //     </svg>
+  //   )
+  // }
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

@@ -5,7 +5,7 @@ import { useAppDispatch } from "@/store/hooks";
 import {
   createJobRolesBulk,
   fetchJobRoles,
-} from "@/store/slices/jobrole-slice";
+} from "@/store/slices/jobroles-slice";
 import { toast } from "react-toastify";
 import {
   FiUploadCloud,

@@ -13,7 +13,7 @@ import {
   fetchTopics,
   Topic,
   updateTopic,
-} from "@/store/slices/topic-slice";
+} from "@/store/slices/topics-slice";
 
 export default function TopicsPage() {
   const dispatch = useAppDispatch();

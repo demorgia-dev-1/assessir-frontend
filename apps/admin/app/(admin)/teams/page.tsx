@@ -9,16 +9,25 @@ import {
   updateTeam,
   clearError,
   clearSelectedTeam,
-  Team
+  Team,
 } from "@/store/slices/teams-slice";
 import { fetchUsers } from "@/store/slices/users-slice";
-import { fetchSectors } from "@/store/slices/sector-slice";
+import { fetchSectors } from "@/store/slices/sectors-slice";
 import { toast } from "react-toastify";
-import { FiEye, FiUsers, FiX, FiCheckSquare, FiPlusSquare, FiBriefcase, FiLayers, FiEdit2 } from "react-icons/fi";
+import {
+  FiEye,
+  FiUsers,
+  FiX,
+  FiCheckSquare,
+  FiPlusSquare,
+  FiBriefcase,
+  FiLayers,
+  FiEdit2,
+} from "react-icons/fi";
 
 export default function TeamsPage() {
   const dispatch = useAppDispatch();
-  
+
   // Teams State
   const {
     teams,
@@ -32,17 +41,23 @@ export default function TeamsPage() {
     totalPages,
     totalTeams,
     hasNext,
-    hasPrev
+    hasPrev,
   } = useAppSelector((state) => state.teams);
 
   // Users & Sectors States (for Selectors)
-  const { users, loading: usersLoading } = useAppSelector((state) => state.users);
-  const { sectors, loading: sectorsLoading } = useAppSelector((state) => state.sectors);
+  const { users, loading: usersLoading } = useAppSelector(
+    (state) => state.users
+  );
+  const { sectors, loading: sectorsLoading } = useAppSelector(
+    (state) => state.sectors
+  );
 
   // Form states
   const [teamName, setTeamName] = useState("");
   const [managerId, setManagerId] = useState<string | number>("");
-  const [selectedSectorIds, setSelectedSectorIds] = useState<(string | number)[]>([]);
+  const [selectedSectorIds, setSelectedSectorIds] = useState<
+    (string | number)[]
+  >([]);
 
   // Side Panel state controls
   const [panelMode, setPanelMode] = useState<"create" | "view">("create");
@@ -52,7 +67,9 @@ export default function TeamsPage() {
   const [teamToEdit, setTeamToEdit] = useState<Team | null>(null);
   const [editTeamName, setEditTeamName] = useState("");
   const [editManagerId, setEditManagerId] = useState<string | number>("");
-  const [editSelectedSectorIds, setEditSelectedSectorIds] = useState<(string | number)[]>([]);
+  const [editSelectedSectorIds, setEditSelectedSectorIds] = useState<
+    (string | number)[]
+  >([]);
 
   useEffect(() => {
     dispatch(fetchTeams({ page: 1, limit: 10 }));
@@ -92,7 +109,7 @@ export default function TeamsPage() {
     const payload = {
       name: teamName.trim(),
       manager_id: Number(managerId),
-      sector_ids: selectedSectorIds.map(id => Number(id))
+      sector_ids: selectedSectorIds.map((id) => Number(id)),
     };
 
     const resultAction = await dispatch(createTeam(payload));
@@ -151,7 +168,7 @@ export default function TeamsPage() {
       id: teamToEdit.id,
       name: editTeamName.trim(),
       manager_id: Number(editManagerId),
-      sector_ids: editSelectedSectorIds.map((id) => Number(id))
+      sector_ids: editSelectedSectorIds.map((id) => Number(id)),
     };
 
     const resultAction = await dispatch(updateTeam(payload));
@@ -164,9 +181,7 @@ export default function TeamsPage() {
   };
 
   // Filter eligible managers (managers only)
-  const eligibleManagers = users.filter(
-    (user) => user.role === "manager"
-  );
+  const eligibleManagers = users.filter((user) => user.role === "manager");
 
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6">
@@ -180,11 +195,12 @@ export default function TeamsPage() {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
               Teams & Operators
             </h1>
-           
           </div>
           <div className="text-right">
             <p className="text-3xl font-bold text-slate-950">{totalTeams}</p>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Operational Teams</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Operational Teams
+            </p>
           </div>
         </div>
       </header>
@@ -196,46 +212,79 @@ export default function TeamsPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/30">
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">ID</th>
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Team Details</th>
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Manager</th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    ID
+                  </th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Team Details
+                  </th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Manager
+                  </th>
                   {/* <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Associated Sectors</th> */}
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Joined Date</th>
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Joined Date
+                  </th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      <td className="px-6 py-5"><div className="h-4 w-8 rounded bg-slate-100" /></td>
-                      <td className="px-6 py-5"><div className="h-4 w-40 rounded bg-slate-100" /></td>
-                      <td className="px-6 py-5"><div className="h-4 w-32 rounded bg-slate-100" /></td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-8 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-40 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-32 rounded bg-slate-100" />
+                      </td>
                       <td className="px-6 py-5">
                         <div className="flex gap-2">
                           <div className="h-5 w-16 rounded-full bg-slate-100" />
                           <div className="h-5 w-16 rounded-full bg-slate-100" />
                         </div>
                       </td>
-                      <td className="px-6 py-5"><div className="h-4 w-24 rounded bg-slate-100" /></td>
-                      <td className="px-6 py-5"><div className="h-4 w-12 ml-auto rounded bg-slate-100" /></td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-24 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-12 ml-auto rounded bg-slate-100" />
+                      </td>
                     </tr>
                   ))
                 ) : teams.length > 0 ? (
                   teams.map((team) => (
-                    <tr key={team.id} className="group transition-colors hover:bg-slate-50/50">
-                      <td className="px-6 py-5 text-sm font-medium text-slate-400">#{team.id}</td>
+                    <tr
+                      key={team.id}
+                      className="group transition-colors hover:bg-slate-50/50"
+                    >
+                      <td className="px-6 py-5 text-sm font-medium text-slate-400">
+                        #{team.id}
+                      </td>
                       <td className="px-6 py-5">
-                        <span className="text-sm font-semibold text-slate-900">{team.name}</span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {team.name}
+                        </span>
                       </td>
                       <td className="px-6 py-5">
                         {team.manager ? (
                           <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-slate-950">{team.manager.name}</span>
-                            <span className="text-xs text-slate-400 mt-0.5">{team.manager.email}</span>
+                            <span className="text-sm font-semibold text-slate-950">
+                              {team.manager.name}
+                            </span>
+                            <span className="text-xs text-slate-400 mt-0.5">
+                              {team.manager.email}
+                            </span>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-400 font-bold italic">No Manager Designated</span>
+                          <span className="text-xs text-slate-400 font-bold italic">
+                            No Manager Designated
+                          </span>
                         )}
                       </td>
                       {/* <td className="px-6 py-5">
@@ -267,11 +316,16 @@ export default function TeamsPage() {
                         </div>
                       </td> */}
                       <td className="px-6 py-5 text-sm text-slate-500">
-                        {team.created_at ? new Date(team.created_at).toLocaleDateString(undefined, {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        }) : "N/A"}
+                        {team.created_at
+                          ? new Date(team.created_at).toLocaleDateString(
+                              undefined,
+                              {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              }
+                            )
+                          : "N/A"}
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3">
@@ -295,8 +349,12 @@ export default function TeamsPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="px-6 py-20 text-center text-sm text-slate-500">
-                      No operational teams registered. Build your first team structure to begin.
+                    <td
+                      colSpan={6}
+                      className="px-6 py-20 text-center text-sm text-slate-500"
+                    >
+                      No operational teams registered. Build your first team
+                      structure to begin.
                     </td>
                   </tr>
                 )}
@@ -308,9 +366,18 @@ export default function TeamsPage() {
           <div className="mt-auto flex items-center justify-between border-t border-slate-100 bg-slate-50/20 px-6 py-5">
             <div className="flex flex-col">
               <p className="text-sm text-slate-500">
-                Page <span className="font-semibold text-slate-950">{currentPage}</span> of <span className="font-semibold text-slate-950">{totalPages}</span>
+                Page{" "}
+                <span className="font-semibold text-slate-950">
+                  {currentPage}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-slate-950">
+                  {totalPages}
+                </span>
               </p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Total {totalTeams} records</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">
+                Total {totalTeams} records
+              </p>
             </div>
             <div className="flex gap-2">
               <button
@@ -339,13 +406,23 @@ export default function TeamsPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-900">
                   <FiPlusSquare className="h-5 w-5" />
                 </div>
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950">Create New Team</h2>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Create New Team
+                </h2>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-500">Link operational sectors, align access permissions, and select managers.</p>
-              
-              <form onSubmit={handleCreateTeam} className="mt-6 flex flex-col gap-4">
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                Link operational sectors, align access permissions, and select
+                managers.
+              </p>
+
+              <form
+                onSubmit={handleCreateTeam}
+                className="mt-6 flex flex-col gap-4"
+              >
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team Name</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                    Team Name
+                  </label>
                   <input
                     type="text"
                     value={teamName}
@@ -358,7 +435,9 @@ export default function TeamsPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team Manager</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                    Team Manager
+                  </label>
                   <select
                     value={managerId}
                     onChange={(e) => setManagerId(e.target.value)}
@@ -376,13 +455,20 @@ export default function TeamsPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Associated Sectors</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                    Associated Sectors
+                  </label>
                   <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 space-y-2">
                     {sectorsLoading ? (
-                      <p className="text-xs text-slate-400 italic p-1">Loading sectors...</p>
+                      <p className="text-xs text-slate-400 italic p-1">
+                        Loading sectors...
+                      </p>
                     ) : sectors.length > 0 ? (
                       sectors.map((sector) => (
-                        <label key={sector.id} className="flex items-center gap-2.5 p-1 hover:bg-slate-50 rounded-lg cursor-pointer transition">
+                        <label
+                          key={sector.id}
+                          className="flex items-center gap-2.5 p-1 hover:bg-slate-50 rounded-lg cursor-pointer transition"
+                        >
                           <input
                             type="checkbox"
                             checked={selectedSectorIds.includes(sector.id)}
@@ -390,11 +476,15 @@ export default function TeamsPage() {
                             className="h-4.5 w-4.5 rounded border-slate-300 text-slate-905 focus:ring-slate-900"
                             disabled={creating}
                           />
-                          <span className="text-xs text-slate-700 font-semibold">{sector.name}</span>
+                          <span className="text-xs text-slate-700 font-semibold">
+                            {sector.name}
+                          </span>
                         </label>
                       ))
                     ) : (
-                      <p className="text-xs text-slate-400 italic p-1">No sectors registered.</p>
+                      <p className="text-xs text-slate-400 italic p-1">
+                        No sectors registered.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -414,14 +504,21 @@ export default function TeamsPage() {
             <div className="glass-panel rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/5 animate-in fade-in duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold tracking-tight text-slate-950">Team Details</h2>
+                  <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                    Team Details
+                  </h2>
                 </div>
-                <button onClick={handleCloseViewMode} className="text-slate-400 hover:text-slate-900 transition p-1 rounded-lg hover:bg-slate-100">
+                <button
+                  onClick={handleCloseViewMode}
+                  className="text-slate-400 hover:text-slate-900 transition p-1 rounded-lg hover:bg-slate-100"
+                >
                   <FiX className="h-5 w-5" />
                 </button>
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Structural allocations and sector mappings.</p>
-              
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Structural allocations and sector mappings.
+              </p>
+
               {viewLoading ? (
                 <div className="mt-8 space-y-4 animate-pulse">
                   <div className="h-14 bg-slate-100 rounded-2xl w-full" />
@@ -431,25 +528,41 @@ export default function TeamsPage() {
               ) : selectedTeam ? (
                 <div className="mt-6 space-y-5">
                   <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Team ID</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950">#{selectedTeam.id}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Team ID
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
+                      #{selectedTeam.id}
+                    </p>
                   </div>
-                  
+
                   <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Team Name</p>
-                    <p className="mt-1 text-sm font-bold text-slate-950">{selectedTeam.name}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Team Name
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-950">
+                      {selectedTeam.name}
+                    </p>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100 flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Designated Manager</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Designated Manager
+                      </p>
                       {selectedTeam.manager ? (
                         <div className="mt-1 flex flex-col">
-                          <p className="text-sm font-bold text-slate-950">{selectedTeam.manager.name}</p>
-                          <p className="text-xs text-slate-500 mt-0.5">{selectedTeam.manager.email}</p>
+                          <p className="text-sm font-bold text-slate-950">
+                            {selectedTeam.manager.name}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {selectedTeam.manager.email}
+                          </p>
                         </div>
                       ) : (
-                        <p className="mt-1 text-xs text-slate-400 italic">None Designated</p>
+                        <p className="mt-1 text-xs text-slate-400 italic">
+                          None Designated
+                        </p>
                       )}
                     </div>
                     <div className="rounded-2xl bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest px-2.5 py-1">
@@ -458,9 +571,12 @@ export default function TeamsPage() {
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Associated Sectors</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Associated Sectors
+                    </p>
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      {selectedTeam.sectors && selectedTeam.sectors.length > 0 ? (
+                      {selectedTeam.sectors &&
+                      selectedTeam.sectors.length > 0 ? (
                         selectedTeam.sectors.map((sector) => (
                           <span
                             key={sector.id}
@@ -469,9 +585,12 @@ export default function TeamsPage() {
                             {sector.name}
                           </span>
                         ))
-                      ) : selectedTeam.sector_ids && selectedTeam.sector_ids.length > 0 ? (
+                      ) : selectedTeam.sector_ids &&
+                        selectedTeam.sector_ids.length > 0 ? (
                         selectedTeam.sector_ids.map((sectorId) => {
-                          const sector = sectors.find((s) => String(s.id) === String(sectorId));
+                          const sector = sectors.find(
+                            (s) => String(s.id) === String(sectorId)
+                          );
                           return sector ? (
                             <span
                               key={sector.id}
@@ -482,21 +601,30 @@ export default function TeamsPage() {
                           ) : null;
                         })
                       ) : (
-                        <span className="text-xs text-slate-400 italic">No associated sectors</span>
+                        <span className="text-xs text-slate-400 italic">
+                          No associated sectors
+                        </span>
                       )}
                     </div>
                   </div>
 
                   <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Created At</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Created At
+                    </p>
                     <p className="mt-1 text-xs text-slate-700">
-                      {selectedTeam.created_at ? new Date(selectedTeam.created_at).toLocaleString(undefined, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short'
-                      }) : "N/A"}
+                      {selectedTeam.created_at
+                        ? new Date(selectedTeam.created_at).toLocaleString(
+                            undefined,
+                            {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            }
+                          )
+                        : "N/A"}
                     </p>
                   </div>
-                  
+
                   <button
                     type="button"
                     onClick={handleCloseViewMode}
@@ -506,15 +634,20 @@ export default function TeamsPage() {
                   </button>
                 </div>
               ) : (
-                <p className="mt-6 text-sm text-slate-500 text-center">Unable to load details.</p>
+                <p className="mt-6 text-sm text-slate-500 text-center">
+                  Unable to load details.
+                </p>
               )}
             </div>
           )}
 
           <div className="glass-panel rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/5">
-            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Architecture Policy</h3>
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+              Architecture Policy
+            </h3>
             <p className="mt-4 text-xs leading-6 text-slate-500">
-              Aligning sectors creates granular security divisions. Mapped managers can administer all sub-assessments.
+              Aligning sectors creates granular security divisions. Mapped
+              managers can administer all sub-assessments.
             </p>
           </div>
         </div>
@@ -529,18 +662,30 @@ export default function TeamsPage() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-900">
                   <FiEdit2 className="h-5 w-5" />
                 </div>
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950">Edit Team</h2>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Edit Team
+                </h2>
               </div>
-              <button onClick={handleCloseEditModal} className="text-slate-400 hover:text-slate-900 transition p-1 rounded-lg hover:bg-slate-100">
+              <button
+                onClick={handleCloseEditModal}
+                className="text-slate-400 hover:text-slate-900 transition p-1 rounded-lg hover:bg-slate-100"
+              >
                 <FiX className="h-5 w-5" />
               </button>
             </div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Modify the team configuration, associated sectors, and manager.</p>
-            
-            <form onSubmit={handleUpdateTeamSubmit} className="mt-6 flex flex-col gap-4">
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Modify the team configuration, associated sectors, and manager.
+            </p>
+
+            <form
+              onSubmit={handleUpdateTeamSubmit}
+              className="mt-6 flex flex-col gap-4"
+            >
               {/* Team Name */}
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team Name</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                  Team Name
+                </label>
                 <input
                   type="text"
                   value={editTeamName}
@@ -555,7 +700,9 @@ export default function TeamsPage() {
 
               {/* Team Manager */}
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team Manager</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                  Team Manager
+                </label>
                 <select
                   value={editManagerId}
                   onChange={(e) => setEditManagerId(e.target.value)}
@@ -574,13 +721,20 @@ export default function TeamsPage() {
 
               {/* Associated Sectors */}
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Associated Sectors</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                  Associated Sectors
+                </label>
                 <div className="max-h-40 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 space-y-2">
                   {sectorsLoading ? (
-                    <p className="text-xs text-slate-400 italic p-1">Loading sectors...</p>
+                    <p className="text-xs text-slate-400 italic p-1">
+                      Loading sectors...
+                    </p>
                   ) : sectors.length > 0 ? (
                     sectors.map((sector) => (
-                      <label key={sector.id} className="flex items-center gap-2.5 p-1 hover:bg-slate-50 rounded-lg cursor-pointer transition">
+                      <label
+                        key={sector.id}
+                        className="flex items-center gap-2.5 p-1 hover:bg-slate-50 rounded-lg cursor-pointer transition"
+                      >
                         <input
                           type="checkbox"
                           checked={editSelectedSectorIds.includes(sector.id)}
@@ -588,11 +742,15 @@ export default function TeamsPage() {
                           className="h-4.5 w-4.5 rounded border-slate-300 text-slate-905 focus:ring-slate-900"
                           disabled={updating}
                         />
-                        <span className="text-xs text-slate-700 font-semibold">{sector.name}</span>
+                        <span className="text-xs text-slate-700 font-semibold">
+                          {sector.name}
+                        </span>
                       </label>
                     ))
                   ) : (
-                    <p className="text-xs text-slate-400 italic p-1">No sectors registered.</p>
+                    <p className="text-xs text-slate-400 italic p-1">
+                      No sectors registered.
+                    </p>
                   )}
                 </div>
               </div>
