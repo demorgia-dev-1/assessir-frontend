@@ -234,7 +234,7 @@ export default function QuestionsPage() {
       return;
     }
 
-    toast.error(error);
+    toast.error(error, { toastId: error });
     dispatch(clearError());
   }, [dispatch, error]);
 
@@ -994,8 +994,8 @@ export default function QuestionsPage() {
       </div>
 
       {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[2rem]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 transition-all duration-200 will-change-[opacity]">
+          <div className="h-[90vh] w-full max-w-5xl flex flex-col rounded-[2rem] overflow-hidden relative shadow-2xl transform translate-z-0 will-change-[transform,opacity]">
             <QuestionForm
               title="Create Questions"
               description="Draft one or more MCQ or rubric questions in this modal, then save them together in a single request."
@@ -1030,13 +1030,14 @@ export default function QuestionsPage() {
       )}
 
       {editModalOpen && questionToEdit && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[2rem]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 transition-all duration-200 will-change-[opacity]">
+          <div className="h-[90vh] w-full max-w-5xl flex flex-col rounded-[2rem] overflow-hidden relative shadow-2xl transform translate-z-0 will-change-[transform,opacity]">
             <QuestionForm
               title="Edit Question"
               description="Update question content, metadata, and formatting before saving."
               topics={topics}
               value={editForm}
+              questionId={questionToEdit.id}
               onChange={setEditForm}
               onSubmit={handleUpdateQuestion}
               submitLabel="Save Changes"
@@ -1053,8 +1054,8 @@ export default function QuestionsPage() {
       )}
 
       {deleteModalOpen && questionToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 transition-all duration-200 will-change-[opacity]">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 shadow-2xl transform translate-z-0 will-change-[transform,opacity]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
                 <FiAlertTriangle className="h-6 w-6 animate-pulse" />

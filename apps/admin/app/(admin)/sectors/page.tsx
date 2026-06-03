@@ -53,7 +53,7 @@ export default function SectorsPage() {
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      toast.error(error, { toastId: error });
       dispatch(clearError());
     }
   }, [error, dispatch]);

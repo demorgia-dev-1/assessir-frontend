@@ -6,14 +6,36 @@ export type JobRole = {
   id: string | number;
   name: string;
   qp_code?: string;
+  Code?: string;
   sector_id: string | number;
   sector?: Sector;
+  nos_list?: JobRoleNos[];
   total_practical_marks: number;
   total_theory_marks: number;
   total_viva_marks: number;
   created_by_user_id?: number;
   created_at?: string;
   updated_at?: string;
+};
+
+export type JobRolePc = {
+  id?: string | number;
+  name?: string;
+  code?: string;
+  pc_code?: string;
+  nos_code?: string;
+  NOSID?: string | number;
+  nos_id?: string | number;
+};
+
+export type JobRoleNos = {
+  id?: string | number;
+  name?: string;
+  code?: string;
+  nos_code?: string;
+  JobRoleID?: string | number;
+  job_role_id?: string | number;
+  pc_list?: JobRolePc[];
 };
 
 export type CreateJobRoleInput = {
@@ -85,7 +107,7 @@ function normalizeMarks(value: unknown): number {
     return 0;
   }
 
-  return numeric / 100;
+  return numeric;
 }
 
 function normalizeJobRole(jobRole: JobRoleApiShape): JobRole {

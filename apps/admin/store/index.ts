@@ -6,6 +6,7 @@ import teamsReducer from "@/store/slices/teams-slice";
 import jobRoleReducer from "@/store/slices/jobroles-slice";
 import topicReducer from "@/store/slices/topics-slice";
 import questionsReducer from "@/store/slices/questions-slice";
+import batchesReducer from "@/store/slices/batches-slice";
 
 export const makeStore = () =>
   configureStore({
@@ -17,6 +18,7 @@ export const makeStore = () =>
       jobRoles: jobRoleReducer,
       topics: topicReducer,
       questions: questionsReducer,
+      batches: batchesReducer,
     },
   });
 

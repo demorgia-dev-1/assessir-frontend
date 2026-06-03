@@ -49,7 +49,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      toast.error(error, { toastId: error });
       dispatch(clearError());
     }
   }, [error, dispatch]);

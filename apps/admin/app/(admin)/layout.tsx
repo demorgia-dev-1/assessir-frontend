@@ -95,6 +95,24 @@ const navigationItems = [
     ),
   },
   {
+    href: "/batches",
+    label: "Batches",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" />
+        <path d="M8 9h8M8 12h8M8 15h5" />
+        <path d="M15.5 5v14" />
+      </svg>
+    ),
+  },
+  {
     href: "/users",
     label: "Users",
     icon: (

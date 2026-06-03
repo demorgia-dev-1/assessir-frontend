@@ -15,6 +15,7 @@ import {
   FiType,
   FiUnderline,
 } from "react-icons/fi";
+import { toast } from "react-toastify";
 
 // ==========================================
 // 1. Rich Text Toolbar (Shared Component)
@@ -23,41 +24,61 @@ import {
 interface RichTextToolbarProps {
   onCommand: (command: string, value?: string) => void;
   activeTargetLabel?: string;
+  onUploadAsset?: (file: File, type: "image" | "video" | "audio") => Promise<string>;
 }
 
-export function RichTextToolbar({ onCommand, activeTargetLabel }: RichTextToolbarProps) {
+function buildMediaCommand(type: "image" | "video" | "audio", src: string) {
+  if (type === "image") {
+    return { command: "insertImage", value: src };
+  }
+
+  return {
+    command: "insertHTML",
+    value:
+      type === "video"
+        ? `<video controls src="${src}" style="max-width: 100%;"></video>`
+        : `<audio controls src="${src}"></audio>`,
+  };
+}
+
+export function RichTextToolbar({
+  onCommand,
+  activeTargetLabel,
+  onUploadAsset,
+}: RichTextToolbarProps) {
   const imageInputId = useId();
   const videoInputId = useId();
   const audioInputId = useId();
 
-  const handleMediaUpload = (
+  const handleMediaUpload = async (
     event: ChangeEvent<HTMLInputElement>,
     type: "image" | "video" | "audio"
   ) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
+
     if (!file) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const src = String(reader.result || "");
+    if (!onUploadAsset) {
+      toast.error("Save the question first before uploading media files.");
+      return;
+    }
+
+    try {
+      const src = await onUploadAsset(file, type);
       if (!src) {
         return;
       }
 
-      if (type === "image") {
-        onCommand("insertImage", src);
-      } else {
-        const tag =
-          type === "video"
-            ? `<video controls src="${src}" style="max-width: 100%;"></video>`
-            : `<audio controls src="${src}"></audio>`;
-        onCommand("insertHTML", tag);
-      }
-    };
-    reader.readAsDataURL(file);
-    event.target.value = "";
+      const mediaCommand = buildMediaCommand(type, src);
+      onCommand(mediaCommand.command, mediaCommand.value);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to upload media file.";
+      toast.error(message);
+    }
   };
 
   const insertUrlMedia = (type: "image" | "video" | "audio") => {
@@ -66,16 +87,8 @@ export function RichTextToolbar({ onCommand, activeTargetLabel }: RichTextToolba
       return;
     }
 
-    if (type === "image") {
-      onCommand("insertImage", src);
-      return;
-    }
-
-    const tag =
-      type === "video"
-        ? `<video controls src="${src}" style="max-width: 100%;"></video>`
-        : `<audio controls src="${src}"></audio>`;
-    onCommand("insertHTML", tag);
+    const mediaCommand = buildMediaCommand(type, src);
+    onCommand(mediaCommand.command, mediaCommand.value);
   };
 
   return (
