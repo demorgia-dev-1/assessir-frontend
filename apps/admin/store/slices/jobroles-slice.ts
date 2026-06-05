@@ -36,6 +36,9 @@ export type JobRoleNos = {
   JobRoleID?: string | number;
   job_role_id?: string | number;
   pc_list?: JobRolePc[];
+  total_theory_marks?: string | number;
+  total_practical_marks?: string | number;
+  total_viva_marks?: string | number;
 };
 
 export type CreateJobRoleInput = {

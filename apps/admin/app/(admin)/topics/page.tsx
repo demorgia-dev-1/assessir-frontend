@@ -195,7 +195,7 @@ export default function TopicsPage() {
                       className="group transition-colors hover:bg-slate-50/50"
                     >
                       <td className="px-6 py-5 text-sm font-medium text-slate-400">
-                        #{topic.id}
+                        {topic.id}
                       </td>
                       <td className="px-6 py-5">
                         <span className="text-sm font-semibold text-slate-900">
@@ -358,7 +358,7 @@ export default function TopicsPage() {
                       Topic ID
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-950">
-                      #{selectedTopic.id}
+                      {selectedTopic.id}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">

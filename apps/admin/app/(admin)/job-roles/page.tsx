@@ -283,7 +283,7 @@ export default function JobRolesPage() {
                       className="group transition-colors hover:bg-slate-50/50"
                     >
                       <td className="px-6 py-5 text-sm font-medium text-slate-400">
-                        #{jobRole.id}
+                        {jobRole.id}
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col">
@@ -555,6 +555,57 @@ export default function JobRolesPage() {
                     </div>
                   </div>
 
+                  {selectedJobRole.nos_list && selectedJobRole.nos_list.length > 0 && (
+                    <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">
+                        Associated NOS ({selectedJobRole.nos_list.length})
+                      </p>
+                      <div className="flex flex-col gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+                        {selectedJobRole.nos_list.map((nos) => (
+                          <div
+                            key={nos.id}
+                            className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-xs font-semibold text-slate-900 line-clamp-2">
+                                {nos.name}
+                              </span>
+                              <span className="shrink-0 inline-flex items-center rounded-md bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 ring-1 ring-inset ring-slate-500/10 uppercase tracking-wide">
+                                {nos.code || nos.nos_code}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5 text-center mt-2.5 pt-2 border-t border-slate-50">
+                              <div>
+                                <span className="block text-[8px] font-bold uppercase text-slate-400">
+                                  Theory
+                                </span>
+                                <span className="text-xs font-bold text-slate-900">
+                                  {nos.total_theory_marks ?? 0}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block text-[8px] font-bold uppercase text-slate-400">
+                                  Practical
+                                </span>
+                                <span className="text-xs font-bold text-slate-900">
+                                  {nos.total_practical_marks ?? 0}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block text-[8px] font-bold uppercase text-slate-400">
+                                  Viva
+                                </span>
+                                <span className="text-xs font-bold text-slate-900">
+                                  {nos.total_viva_marks ?? 0}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Last Updated
@@ -566,6 +617,7 @@ export default function JobRolesPage() {
                             {
                               dateStyle: "medium",
                               timeStyle: "short",
+                              timeZone: undefined,
                             }
                           )
                         : selectedJobRole.created_at
@@ -574,6 +626,7 @@ export default function JobRolesPage() {
                             {
                               dateStyle: "medium",
                               timeStyle: "short",
+                              timeZone: undefined,
                             }
                           )
                         : "N/A"}

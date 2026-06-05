@@ -313,9 +313,14 @@ export default function BatchesPage() {
       dispatch(fetchJobRoleById(form.job_role_id));
       return;
     }
+    
+    if (bulkJobRoleId && bulkOpen) {
+      dispatch(fetchJobRoleById(bulkJobRoleId));
+      return;
+    }
 
     dispatch(clearSelectedJobRole());
-  }, [dispatch, form.job_role_id, modalMode]);
+  }, [dispatch, form.job_role_id, modalMode, bulkJobRoleId, bulkOpen]);
 
   const filteredJobRoles = useMemo(
     () =>
@@ -341,6 +346,66 @@ export default function BatchesPage() {
     () => selectedJobRole?.nos_list || [],
     [selectedJobRole]
   );
+
+  // Auto-populate sections and NOS when job role is selected in create mode
+  useEffect(() => {
+    if (modalMode !== "create" || !selectedJobRole || jobRoleDetailLoading) {
+      return;
+    }
+
+    const nosList = selectedJobRole.nos_list || [];
+    const hasTheory = nosList.some((nos) => Number(nos.total_theory_marks) > 0) || Number(selectedJobRole.total_theory_marks) > 0;
+    const hasPractical = nosList.some((nos) => Number(nos.total_practical_marks) > 0) || Number(selectedJobRole.total_practical_marks) > 0;
+    const hasViva = nosList.some((nos) => Number(nos.total_viva_marks) > 0) || Number(selectedJobRole.total_viva_marks) > 0;
+
+    const buildNosListForSection = (sectionType: BatchSectionType): NosForm[] => {
+      if (!nosList.length) return [createNos()];
+      return nosList.map((nos) => createNos({
+        nos_code: getNosCode(nos),
+        question_count: "1",
+        difficulty_lvl: sectionType === "practical" ? "medium" : "easy",
+        question_type: sectionType === "practical" ? "rubric" : "mcq",
+        correct_mark: "0",
+        negative_mark: "0",
+      }));
+    };
+
+    const sections: SectionForm[] = [];
+    if (hasTheory) {
+      sections.push({
+        name: "Theory Section",
+        type: "theory",
+        nos_list: buildNosListForSection("theory"),
+      });
+    }
+    if (hasPractical) {
+      sections.push({
+        name: "Practical Section",
+        type: "practical",
+        nos_list: buildNosListForSection("practical"),
+      });
+    }
+    if (hasViva) {
+      sections.push({
+        name: "Viva Section",
+        type: "viva",
+        nos_list: buildNosListForSection("viva"),
+      });
+    }
+    // Fallback: at least one section
+    if (!sections.length) {
+      sections.push({
+        name: "Section 1",
+        type: "theory",
+        nos_list: buildNosListForSection("theory"),
+      });
+    }
+
+    setForm((current) => ({
+      ...current,
+      sections,
+    }));
+  }, [selectedJobRole, modalMode, jobRoleDetailLoading]);
 
   const loadQuestionCount = async (topicId: string) => {
     if (!topicId || questionCounts[topicId] !== undefined) {
@@ -724,7 +789,7 @@ export default function BatchesPage() {
                     className="group transition-colors hover:bg-slate-50/50"
                   >
                     <td className="px-6 py-5 text-sm font-medium text-slate-400">
-                      #{batch.id}
+                      {batch.id}
                     </td>
                     <td className="px-6 py-5 text-sm font-semibold text-slate-900">
                       {batch.name || "Untitled batch"}
@@ -921,7 +986,20 @@ export default function BatchesPage() {
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {jobRoleDetailLoading
                     ? "Loading NOS and PC details for selected job role..."
-                    : `${selectedNosList.length} NOS available from selected job role.`}
+                    : selectedJobRole ? (
+                      <div className="flex flex-wrap items-center gap-4">
+                        <span>{selectedNosList.length} NOS available</span>
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                          Theory: {Number(selectedJobRole.total_theory_marks) || 0}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                          Practical: {Number(selectedJobRole.total_practical_marks) || 0}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                          Viva: {Number(selectedJobRole.total_viva_marks) || 0}
+                        </span>
+                      </div>
+                    ) : `Select a job role to load NOS details.`}
                 </div>
               )}
 
@@ -1013,9 +1091,41 @@ export default function BatchesPage() {
                           className="rounded-2xl border border-white bg-white p-4 shadow-sm"
                         >
                           <div className="mb-3 flex items-center justify-between gap-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                              NOS {nosIndex + 1}
-                            </p>
+                            <div className="flex items-center gap-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                NOS {nosIndex + 1}
+                                {nos.nos_code && (
+                                  <span className="ml-2 normal-case tracking-normal text-slate-500">
+                                    ({nos.nos_code})
+                                  </span>
+                                )}
+                              </p>
+                              {nos.nos_code && (() => {
+                                const matchedNos = selectedNosList.find(
+                                  (jobRoleNos) => getNosCode(jobRoleNos) === nos.nos_code
+                                );
+                                if (!matchedNos) return null;
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    {Number(matchedNos.total_theory_marks) > 0 && (
+                                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
+                                        T:{matchedNos.total_theory_marks}
+                                      </span>
+                                    )}
+                                    {Number(matchedNos.total_practical_marks) > 0 && (
+                                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
+                                        P:{matchedNos.total_practical_marks}
+                                      </span>
+                                    )}
+                                    {Number(matchedNos.total_viva_marks) > 0 && (
+                                      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
+                                        V:{matchedNos.total_viva_marks}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                             <button
                               type="button"
                               onClick={() => removeNos(sectionIndex, nosIndex)}
@@ -1509,15 +1619,18 @@ export default function BatchesPage() {
                   ))}
                 </select>
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={downloadBatchesTemplate}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
-                >
-                  <FiDownload className="h-4 w-4" />
-                  Template
-                </button>
+              <div className={`grid ${bulkJobRoleId ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
+                {bulkJobRoleId && (
+                  <button
+                    type="button"
+                    onClick={() => selectedJobRole && downloadBatchesTemplate(selectedJobRole)}
+                    disabled={jobRoleDetailLoading || !selectedJobRole}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                  >
+                    <FiDownload className="h-4 w-4" />
+                    {jobRoleDetailLoading ? "Loading..." : "Template"}
+                  </button>
+                )}
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">
                   <FiUploadCloud className="h-4 w-4" />
                   Select .xlsx
@@ -1616,40 +1729,9 @@ export default function BatchesPage() {
                     />
                     <Stat label="Viva" value={selectedBatch.viva_time ?? 0} />
                   </div>
-                  {(selectedBatch.sections || []).map((section) => (
-                    <div
-                      key={`${section.type}-${section.name}`}
-                      className="rounded-2xl border border-slate-200 p-5"
-                    >
-                      <p className="text-sm font-semibold text-slate-950">
-                        {section.name}
-                      </p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                        {section.type}
-                      </p>
-                      <div className="mt-4 space-y-3">
-                        {section.nos_list.map((nos) => (
-                          <div
-                            key={nos.nos_code}
-                            className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600"
-                          >
-                            <p className="font-semibold text-slate-900">
-                              {nos.nos_code}
-                            </p>
-                            <p className="mt-1">
-                              Questions: {nos.question_count} ·{" "}
-                              {nos.difficulty_lvl} · {nos.question_type}
-                            </p>
-                            <p className="mt-1">
-                              PCs:{" "}
-                              {nos.pc_list.map((pc) => pc.pc_code).join(", ") ||
-                                "None"}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                  <TestDetailsSection test={selectedBatch.theory_test} type="theory" />
+                  <TestDetailsSection test={selectedBatch.practical_test} type="practical" />
+                  <TestDetailsSection test={selectedBatch.viva_test} type="viva" />
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">No batch selected.</p>
@@ -1720,6 +1802,86 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
         {label}
       </p>
+    </div>
+  );
+}
+
+function TestDetailsSection({ test, type }: { test: any; type: string }) {
+  if (!test) return null;
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/30 p-5 space-y-4">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h4 className="text-sm font-bold text-slate-900 capitalize">
+            {type} Test
+          </h4>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            {test.Name || `${type} Test`}
+          </p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
+          {test.time_in_minutes || 0} mins
+        </span>
+      </div>
+
+      <div className="space-y-4">
+        {(test.sections || []).map((sec: any) => (
+          <div key={sec.id} className="space-y-3">
+            <h5 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              {sec.Name || "Section"}
+            </h5>
+            <div className="space-y-3">
+              {(sec.questions || []).map((q: any, qIdx: number) => {
+                const metadata = q.metadata && typeof q.metadata !== "string" ? q.metadata : null;
+                return (
+                  <div
+                    key={q.id || qIdx}
+                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm space-y-3 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                          Question {qIdx + 1}
+                        </span>
+                        <div
+                          className="text-slate-900 font-medium leading-relaxed prose prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{ __html: q.text }}
+                        />
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <span className="inline-flex items-center rounded-md bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 ring-1 ring-inset ring-slate-500/10 uppercase tracking-wide">
+                          {q.nos?.code || q.nos?.nos_code || q.nos_code || "NOS"}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-800">
+                          {q.correct_mark ? `+${q.correct_mark}` : "0"} Marks
+                        </span>
+                      </div>
+                    </div>
+
+                    {q.type === "mcq" && metadata?.options && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-50 mt-1">
+                        {metadata.options.map((opt: any, optIdx: number) => (
+                          <div
+                            key={opt.id || optIdx}
+                            className={`rounded-lg border px-3 py-2 text-left ${
+                              opt.is_correct
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-800 font-semibold"
+                                : "border-slate-100 bg-slate-50/50 text-slate-600"
+                            }`}
+                          >
+                            <span className="mr-1.5 opacity-60">{String.fromCharCode(65 + optIdx)}.</span>
+                            <span dangerouslySetInnerHTML={{ __html: opt.text }} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

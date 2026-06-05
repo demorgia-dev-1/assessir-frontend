@@ -5,6 +5,7 @@ import type {
   BatchQuestionType,
   BatchSectionType,
 } from "@/store/slices/batches-slice";
+import { JobRole } from "@/store/slices/jobroles-slice";
 
 export interface BatchValidationError {
   type: "error" | "warning";
@@ -23,168 +24,47 @@ const NOS_SHEET = "NOS";
 const PCS_SHEET = "PCs";
 
 const BATCH_HEADERS = [
-  "batch_key",
-  "name",
-  "theory_time",
-  "practical_time",
-  "viva_time",
+  "BATCH NAME",
+  "TOTAL THEORY MARKS",
+  "TOTAL PRACTICAL MARKS",
+  "TOTAL VIVA MARKS",
+  "THEORY TIME",
+  "PRACTICAL TIME",
+  "VIVA TIME",
 ] as const;
 
 const SECTION_HEADERS = [
-  "batch_key",
-  "section_key",
-  "name",
-  "type",
+  "BATCH NAME",
+  "SECTION NAME",
+  "TYPE",
 ] as const;
 
 const NOS_HEADERS = [
-  "section_key",
-  "nos_key",
-  "topic_id",
-  "nos_code",
-  "question_count",
-  "difficulty_lvl",
-  "question_type",
-  "correct_mark",
-  "negative_mark",
+  "SECTION NAME",
+  "NOS NAME",
+  "NOS CODE",
+  "NOS MAX THEORY MARKS",
+  "NOS MAX PRACTICAL MARKS",
+  "NOS MAX VIVA MARKS",
+  "TOPIC ID",
+  "QUESTION COUNT",
+  "DIFFICULTY",
+  "QUESTION TYPE",
+  "CORRECT MARK",
+  "NEGATIVE MARK",
 ] as const;
 
-const PC_HEADERS = [
-  "nos_key",
-  "topic_id",
-  "nos_code",
-  "pc_code",
-  "question_count",
-  "difficulty_lvl",
-  "question_type",
-  "correct_mark",
-  "negative_mark",
-] as const;
-
-const TEMPLATE_BATCHES = [
-  {
-    batch_key: "react-batch-1",
-    name: "React Batch 1",
-    theory_time: 30,
-    practical_time: 30,
-    viva_time: 30,
-  },
-];
-
-const TEMPLATE_SECTIONS = [
-  {
-    batch_key: "react-batch-1",
-    section_key: "react-batch-1-theory",
-    name: "Theory Section",
-    type: "theory",
-  },
-  {
-    batch_key: "react-batch-1",
-    section_key: "react-batch-1-practical",
-    name: "Practical Section",
-    type: "practical",
-  },
-  {
-    batch_key: "react-batch-1",
-    section_key: "react-batch-1-viva",
-    name: "Viva Section",
-    type: "viva",
-  },
-];
-
-const TEMPLATE_NOS = [
-  {
-    section_key: "react-batch-1-theory",
-    nos_key: "theory-nos-1",
-    topic_id: 1,
-    nos_code: "NOS-REACT-001",
-    question_count: 1,
-    difficulty_lvl: "easy",
-    question_type: "mcq",
-    correct_mark: 0,
-    negative_mark: 0,
-  },
-  {
-    section_key: "react-batch-1-theory",
-    nos_key: "theory-nos-2",
-    topic_id: 1,
-    nos_code: "NOS-REACT-002",
-    question_count: 1,
-    difficulty_lvl: "easy",
-    question_type: "mcq",
-    correct_mark: 0,
-    negative_mark: 0,
-  },
-  {
-    section_key: "react-batch-1-practical",
-    nos_key: "practical-nos-1",
-    topic_id: 1,
-    nos_code: "NOS-REACT-001",
-    question_count: 1,
-    difficulty_lvl: "medium",
-    question_type: "rubric",
-    correct_mark: 0,
-    negative_mark: 0,
-  },
-  {
-    section_key: "react-batch-1-practical",
-    nos_key: "practical-nos-2",
-    topic_id: 1,
-    nos_code: "NOS-REACT-002",
-    question_count: 1,
-    difficulty_lvl: "medium",
-    question_type: "rubric",
-    correct_mark: 0,
-    negative_mark: 0,
-  },
-  {
-    section_key: "react-batch-1-viva",
-    nos_key: "viva-nos-1",
-    topic_id: 1,
-    nos_code: "NOS-REACT-001",
-    question_count: 1,
-    difficulty_lvl: "easy",
-    question_type: "mcq",
-    correct_mark: 0,
-    negative_mark: 0,
-  },
-  {
-    section_key: "react-batch-1-viva",
-    nos_key: "viva-nos-2",
-    topic_id: 1,
-    nos_code: "NOS-REACT-002",
-    question_count: 1,
-    difficulty_lvl: "easy",
-    question_type: "mcq",
-    correct_mark: 0,
-    negative_mark: 0,
-  },
-];
-
-const TEMPLATE_PCS = [
-  ["theory-nos-1", "NOS-REACT-001", "PC-REACT-001", "easy", "mcq", 7],
-  ["theory-nos-1", "NOS-REACT-001", "PC-REACT-002", "easy", "mcq", 8],
-  ["theory-nos-2", "NOS-REACT-002", "PC-REACT-003", "easy", "mcq", 7],
-  ["theory-nos-2", "NOS-REACT-002", "PC-REACT-004", "easy", "mcq", 8],
-  ["practical-nos-1", "NOS-REACT-001", "PC-REACT-001", "medium", "rubric", 12],
-  ["practical-nos-1", "NOS-REACT-001", "PC-REACT-002", "medium", "rubric", 13],
-  ["practical-nos-2", "NOS-REACT-002", "PC-REACT-003", "medium", "rubric", 12],
-  ["practical-nos-2", "NOS-REACT-002", "PC-REACT-004", "medium", "rubric", 13],
-  ["viva-nos-1", "NOS-REACT-001", "PC-REACT-001", "easy", "mcq", 5],
-  ["viva-nos-1", "NOS-REACT-001", "PC-REACT-002", "easy", "mcq", 5],
-  ["viva-nos-2", "NOS-REACT-002", "PC-REACT-003", "easy", "mcq", 5],
-  ["viva-nos-2", "NOS-REACT-002", "PC-REACT-004", "easy", "mcq", 5],
-].map(([nos_key, nos_code, pc_code, difficulty_lvl, question_type, correct_mark]) => ({
-  nos_key,
-  topic_id: 1,
-  nos_code,
-  pc_code,
-  question_count: 1,
-  difficulty_lvl,
-  question_type,
-  correct_mark,
-  negative_mark: 0,
-}));
+// const PC_HEADERS = [
+//   "NOS CODE",
+//   "PC NAME",
+//   "PC CODE",
+//   "TOPIC ID",
+//   "QUESTION COUNT",
+//   "DIFFICULTY",
+//   "QUESTION TYPE",
+//   "CORRECT MARK",
+//   "NEGATIVE MARK",
+// ] as const;
 
 function isEmpty(value: unknown) {
   return value === undefined || value === null || String(value).trim() === "";
@@ -234,28 +114,124 @@ function buildSheet<T extends Record<string, unknown>>(
   return sheet;
 }
 
-export function downloadBatchesTemplate() {
+export function downloadBatchesTemplate(jobRole: JobRole) {
+  const batchName = `${jobRole.name || "Job Role"} Batch 1`;
+
+  const batches = [
+    {
+      "BATCH NAME": batchName,
+      "TOTAL THEORY MARKS": numberValue(jobRole.total_theory_marks),
+      "TOTAL PRACTICAL MARKS": numberValue(jobRole.total_practical_marks),
+      "TOTAL VIVA MARKS": numberValue(jobRole.total_viva_marks),
+      "THEORY TIME": 30,
+      "PRACTICAL TIME": 30,
+      "VIVA TIME": 30,
+    },
+  ];
+
+  const sections = [
+    {
+      "BATCH NAME": batchName,
+      "SECTION NAME": "Section 1",
+      "TYPE": "theory",
+    },
+    
+  ];
+
+  const nosList: any[] = [];
+  // const pcList: any[] = [];
+
+  const jobRoleNosList = jobRole.nos_list || [];
+
+  for (const nos of jobRoleNosList) {
+    const nosCode = nos.code || nos.nos_code || "";
+
+    for (const section of sections) {
+      nosList.push({
+        "SECTION NAME": section["SECTION NAME"],
+        "NOS NAME": nos.name || "",
+        "NOS CODE": nosCode,
+        "NOS MAX THEORY MARKS": numberValue(nos.total_theory_marks),
+        "NOS MAX PRACTICAL MARKS": numberValue(nos.total_practical_marks),
+        "NOS MAX VIVA MARKS": numberValue(nos.total_viva_marks),
+        "TOPIC ID": "",
+        "QUESTION COUNT": 1,
+        "DIFFICULTY": "easy",
+        "QUESTION TYPE": section["TYPE"] === "practical" ? "rubric" : "mcq",
+        "CORRECT MARK": 0,
+        "NEGATIVE MARK": 0,
+      });
+    }
+
+    // const jobRolePcList = nos.pc_list || [];
+    // for (const pc of jobRolePcList) {
+    //   const pcCode = pc.code || pc.pc_code || "";
+    //   pcList.push({
+    //     "NOS CODE": nosCode,
+    //     "PC NAME": pc.name || "",
+    //     "PC CODE": pcCode,
+    //     "TOPIC ID": "",
+    //     "QUESTION COUNT": 1,
+    //     "DIFFICULTY": "easy",
+    //     "QUESTION TYPE": "mcq",
+    //     "CORRECT MARK": 0,
+    //     "NEGATIVE MARK": 0,
+    //   });
+    // }
+  }
+
+  if (nosList.length === 0) {
+    nosList.push({
+      "SECTION NAME": "Section 1",
+      "NOS NAME": "",
+      "NOS CODE": "NOS-001",
+      "NOS MAX THEORY MARKS": 0,
+      "NOS MAX PRACTICAL MARKS": 0,
+      "NOS MAX VIVA MARKS": 0,
+      "TOPIC ID": "",
+      "QUESTION COUNT": 1,
+      "DIFFICULTY": "easy",
+      "QUESTION TYPE": "mcq",
+      "CORRECT MARK": 0,
+      "NEGATIVE MARK": 0,
+    });
+  }
+
+  // if (pcList.length === 0) {
+  //   pcList.push({
+  //     "NOS CODE": "NOS-001",
+  //     "PC NAME": "",
+  //     "PC CODE": "PC-001",
+  //     "TOPIC ID": "",
+  //     "QUESTION COUNT": 1,
+  //     "DIFFICULTY": "easy",
+  //     "QUESTION TYPE": "mcq",
+  //     "CORRECT MARK": 0,
+  //     "NEGATIVE MARK": 0,
+  //   });
+  // }
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
     workbook,
-    buildSheet(TEMPLATE_BATCHES, BATCH_HEADERS),
+    buildSheet(batches, BATCH_HEADERS),
     BATCHES_SHEET
   );
   XLSX.utils.book_append_sheet(
     workbook,
-    buildSheet(TEMPLATE_SECTIONS, SECTION_HEADERS),
+    buildSheet(sections, SECTION_HEADERS),
     SECTIONS_SHEET
   );
   XLSX.utils.book_append_sheet(
     workbook,
-    buildSheet(TEMPLATE_NOS, NOS_HEADERS),
+    buildSheet(nosList, NOS_HEADERS),
     NOS_SHEET
   );
-  XLSX.utils.book_append_sheet(
-    workbook,
-    buildSheet(TEMPLATE_PCS, PC_HEADERS),
-    PCS_SHEET
-  );
+  // XLSX.utils.book_append_sheet(
+  //   workbook,
+  //   buildSheet(pcList, PC_HEADERS),
+  //   PCS_SHEET
+  // );
   XLSX.writeFile(workbook, "batches_template.xlsx", { bookType: "xlsx" });
 }
 
@@ -285,7 +261,7 @@ export function parseBatchesExcelFile(
   const batchRows = getSheetRows(workbook, BATCHES_SHEET);
   const sectionRows = getSheetRows(workbook, SECTIONS_SHEET);
   const nosRows = getSheetRows(workbook, NOS_SHEET);
-  const pcRows = getSheetRows(workbook, PCS_SHEET);
+  // const pcRows = getSheetRows(workbook, PCS_SHEET);
 
   if (!batchRows.length) {
     return {
@@ -299,147 +275,147 @@ export function parseBatchesExcelFile(
     };
   }
 
-  const pcsByNosKey = new Map<string, BatchPayload["sections"][number]["nos_list"][number]["pc_list"]>();
-  pcRows.forEach((row, rowIndex) => {
-    const prefix = `${PCS_SHEET} row ${rowIndex + 2}`;
-    const nosKey = stringValue(row.nos_key);
-    const difficulty = parseDifficulty(row.difficulty_lvl);
-    const questionType = parseQuestionType(row.question_type);
+  // const pcsByNosCode = new Map<string, BatchPayload["sections"][number]["nos_list"][number]["pc_list"]>();
+  // pcRows.forEach((row, rowIndex) => {
+  //   const prefix = `${PCS_SHEET} row ${rowIndex + 2}`;
+  //   const nosCode = stringValue(row["NOS CODE"]);
+  //   const pcCode = stringValue(row["PC CODE"]);
+  //   const difficulty = parseDifficulty(row["DIFFICULTY"]);
+  //   const questionType = parseQuestionType(row["QUESTION TYPE"]);
+  //
+  //   if (!nosCode) {
+  //     errors.push({ type: "error", message: `${prefix}: NOS CODE is required.` });
+  //     return;
+  //   }
+  //   if (!difficulty || !questionType || isEmpty(pcCode)) {
+  //     errors.push({
+  //       type: "error",
+  //       message: `${prefix}: PC CODE, DIFFICULTY, and QUESTION TYPE are required.`,
+  //     });
+  //     return;
+  //   }
+  //
+  //   const pc = {
+  //     topic_id: numberValue(row["TOPIC ID"]),
+  //     nos_code: nosCode,
+  //     pc_code: pcCode,
+  //     question_count: numberValue(row["QUESTION COUNT"]),
+  //     difficulty_lvl: difficulty,
+  //     question_type: questionType,
+  //     correct_mark: numberValue(row["CORRECT MARK"]),
+  //     negative_mark: numberValue(row["NEGATIVE MARK"]),
+  //   };
+  //
+  //   pcsByNosCode.set(nosCode, [...(pcsByNosCode.get(nosCode) || []), pc]);
+  // });
 
-    if (!nosKey) {
-      errors.push({ type: "error", message: `${prefix}: nos_key is required.` });
-      return;
-    }
-    if (!difficulty || !questionType || isEmpty(row.pc_code)) {
-      errors.push({
-        type: "error",
-        message: `${prefix}: pc_code, difficulty_lvl, and question_type are required.`,
-      });
-      return;
-    }
-
-    const pc = {
-      topic_id: numberValue(row.topic_id),
-      nos_code: stringValue(row.nos_code),
-      pc_code: stringValue(row.pc_code),
-      question_count: numberValue(row.question_count),
-      difficulty_lvl: difficulty,
-      question_type: questionType,
-      correct_mark: numberValue(row.correct_mark),
-      negative_mark: numberValue(row.negative_mark),
-    };
-
-    pcsByNosKey.set(nosKey, [...(pcsByNosKey.get(nosKey) || []), pc]);
-  });
-
-  const nosBySectionKey = new Map<string, BatchPayload["sections"][number]["nos_list"]>();
+  const nosBySectionName = new Map<string, BatchPayload["sections"][number]["nos_list"]>();
   nosRows.forEach((row, rowIndex) => {
     const prefix = `${NOS_SHEET} row ${rowIndex + 2}`;
-    const sectionKey = stringValue(row.section_key);
-    const nosKey = stringValue(row.nos_key);
-    const difficulty = parseDifficulty(row.difficulty_lvl);
-    const questionType = parseQuestionType(row.question_type);
+    const sectionName = stringValue(row["SECTION NAME"]);
+    const nosCode = stringValue(row["NOS CODE"]);
+    const difficulty = parseDifficulty(row["DIFFICULTY"]);
+    const questionType = parseQuestionType(row["QUESTION TYPE"]);
 
-    if (!sectionKey || !nosKey) {
+    if (!sectionName || !nosCode) {
       errors.push({
         type: "error",
-        message: `${prefix}: section_key and nos_key are required.`,
+        message: `${prefix}: SECTION NAME and NOS CODE are required.`,
       });
       return;
     }
-    if (!difficulty || !questionType || isEmpty(row.nos_code)) {
+    if (!difficulty || !questionType) {
       errors.push({
         type: "error",
-        message: `${prefix}: nos_code, difficulty_lvl, and question_type are required.`,
+        message: `${prefix}: DIFFICULTY, and QUESTION TYPE are required.`,
       });
       return;
     }
 
     const nos = {
-      topic_id: numberValue(row.topic_id),
-      nos_code: stringValue(row.nos_code),
-      question_count: numberValue(row.question_count),
+      topic_id: numberValue(row["TOPIC ID"]),
+      nos_code: nosCode,
+      question_count: numberValue(row["QUESTION COUNT"]),
       difficulty_lvl: difficulty,
       question_type: questionType,
-      correct_mark: numberValue(row.correct_mark),
-      negative_mark: numberValue(row.negative_mark),
-      pc_list: pcsByNosKey.get(nosKey) || [],
+      correct_mark: numberValue(row["CORRECT MARK"]),
+      negative_mark: numberValue(row["NEGATIVE MARK"]),
+      pc_list: [], // PC sheet disabled for now
     };
 
-    if (!nos.pc_list.length) {
-      errors.push({
-        type: "warning",
-        message: `${prefix}: no PC rows found for nos_key "${nosKey}".`,
-      });
-    }
+    // if (!nos.pc_list.length) {
+    //   errors.push({
+    //     type: "warning",
+    //     message: `${prefix}: no PC rows found for NOS CODE "${nosCode}".`,
+    //   });
+    // }
 
-    nosBySectionKey.set(sectionKey, [
-      ...(nosBySectionKey.get(sectionKey) || []),
+    nosBySectionName.set(sectionName, [
+      ...(nosBySectionName.get(sectionName) || []),
       nos,
     ]);
   });
 
-  const sectionsByBatchKey = new Map<string, BatchPayload["sections"]>();
+  const sectionsByBatchName = new Map<string, BatchPayload["sections"]>();
   sectionRows.forEach((row, rowIndex) => {
     const prefix = `${SECTIONS_SHEET} row ${rowIndex + 2}`;
-    const batchKey = stringValue(row.batch_key);
-    const sectionKey = stringValue(row.section_key);
-    const type = parseSectionType(row.type);
+    const batchName = stringValue(row["BATCH NAME"]);
+    const sectionName = stringValue(row["SECTION NAME"]);
+    const type = parseSectionType(row["TYPE"]);
 
-    if (!batchKey || !sectionKey || !type || isEmpty(row.name)) {
+    if (!batchName || !sectionName || !type) {
       errors.push({
         type: "error",
-        message: `${prefix}: batch_key, section_key, name, and type are required.`,
+        message: `${prefix}: BATCH NAME, SECTION NAME, and TYPE are required.`,
       });
       return;
     }
 
     const section = {
-      name: stringValue(row.name),
+      name: sectionName,
       type,
-      nos_list: nosBySectionKey.get(sectionKey) || [],
+      nos_list: nosBySectionName.get(sectionName) || [],
     };
 
     if (!section.nos_list.length) {
       errors.push({
         type: "warning",
-        message: `${prefix}: no NOS rows found for section_key "${sectionKey}".`,
+        message: `${prefix}: no NOS rows found for SECTION NAME "${sectionName}".`,
       });
     }
 
-    sectionsByBatchKey.set(batchKey, [
-      ...(sectionsByBatchKey.get(batchKey) || []),
+    sectionsByBatchName.set(batchName, [
+      ...(sectionsByBatchName.get(batchName) || []),
       section,
     ]);
   });
 
   const batches = batchRows.reduce<BatchPayload[]>((result, row, rowIndex) => {
     const prefix = `${BATCHES_SHEET} row ${rowIndex + 2}`;
-    const batchKey = stringValue(row.batch_key);
-    const name = stringValue(row.name);
+    const name = stringValue(row["BATCH NAME"]);
 
-    if (!batchKey || !name || (!options.jobRoleId && isEmpty(row.job_role_id))) {
+    if (!name) {
       errors.push({
         type: "error",
-        message: `${prefix}: batch_key and name are required.`,
+        message: `${prefix}: BATCH NAME is required.`,
       });
       return result;
     }
 
-    const sections = sectionsByBatchKey.get(batchKey) || [];
+    const sections = sectionsByBatchName.get(name) || [];
     if (!sections.length) {
       errors.push({
         type: "warning",
-        message: `${prefix}: no sections found for batch_key "${batchKey}".`,
+        message: `${prefix}: no sections found for BATCH NAME "${name}".`,
       });
     }
 
     result.push({
       name,
-      job_role_id: options.jobRoleId ?? numberValue(row.job_role_id),
-      theory_time: numberValue(row.theory_time),
-      practical_time: numberValue(row.practical_time),
-      viva_time: numberValue(row.viva_time),
+      job_role_id: options.jobRoleId ?? 0,
+      theory_time: numberValue(row["THEORY TIME"]),
+      practical_time: numberValue(row["PRACTICAL TIME"]),
+      viva_time: numberValue(row["VIVA TIME"]),
       sections,
     });
 

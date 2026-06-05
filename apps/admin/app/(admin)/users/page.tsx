@@ -171,7 +171,7 @@ export default function UsersPage() {
                 ) : users.length > 0 ? (
                   users.map((user) => (
                     <tr key={user.id} className="group transition-colors hover:bg-slate-50/50">
-                      <td className="px-6 py-5 text-sm font-medium text-slate-400">#{user.id}</td>
+                      <td className="px-6 py-5 text-sm font-medium text-slate-400">{user.id}</td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col">
                           <span className="text-sm font-semibold text-slate-900">{user.name}</span>

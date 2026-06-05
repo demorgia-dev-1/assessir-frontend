@@ -519,7 +519,7 @@ export default function QuestionsPage() {
                       className="group transition-colors hover:bg-slate-50/50"
                     >
                       <td className="px-6 py-5 text-sm font-medium text-slate-400">
-                        #{question.id}
+                        {question.id}
                       </td>
                       <td className="px-6 py-5">
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">

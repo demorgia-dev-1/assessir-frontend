@@ -52,6 +52,9 @@ export type Batch = Partial<BatchPayload> & {
     id: string | number;
     name: string;
   } | null;
+  theory_test?: any;
+  practical_test?: any;
+  viva_test?: any;
   created_at?: string;
   updated_at?: string;
 };
@@ -133,6 +136,58 @@ function getErrorMessage(error: any, fallback: string) {
 }
 
 function normalizeBatch(batch: BatchApiShape): Batch {
+  let sections = batch.sections ?? [];
+  if ((!sections || sections.length === 0) && (batch.theory_test || batch.practical_test || batch.viva_test)) {
+    const reconstructed: BatchSectionPayload[] = [];
+    
+    const parseTest = (test: any, type: BatchSectionType) => {
+      if (!test || !Array.isArray(test.sections)) return;
+      test.sections.forEach((sec: any) => {
+        const groups: Record<string, BatchNosPayload> = {};
+        (sec.questions || []).forEach((q: any) => {
+          const nosCode = q.nos?.code || q.nos?.nos_code || q.nos_code || "";
+          const topicId = Number(q.topic_id || q.topic?.id || 0);
+          const difficulty = (q.difficulty_lvl || "easy") as BatchDifficultyLevel;
+          const qType = (q.type || "mcq") as BatchQuestionType;
+          const correctMark = Number(q.correct_mark ?? 0);
+          const negativeMark = Number(q.negative_mark ?? 0);
+          
+          const key = `${nosCode}_${topicId}_${difficulty}_${qType}_${correctMark}_${negativeMark}`;
+          if (!groups[key]) {
+            groups[key] = {
+              topic_id: topicId,
+              nos_code: nosCode,
+              question_count: 0,
+              difficulty_lvl: difficulty,
+              question_type: qType,
+              correct_mark: correctMark,
+              negative_mark: negativeMark,
+              pc_list: [],
+            };
+          }
+          groups[key].question_count += 1;
+        });
+        
+        const nosList = Object.values(groups);
+        if (nosList.length > 0) {
+          reconstructed.push({
+            name: sec.Name || sec.name || `${type.charAt(0).toUpperCase()}${type.slice(1)} Section`,
+            type,
+            nos_list: nosList,
+          });
+        }
+      });
+    };
+
+    parseTest(batch.theory_test, "theory");
+    parseTest(batch.practical_test, "practical");
+    parseTest(batch.viva_test, "viva");
+    
+    if (reconstructed.length > 0) {
+      sections = reconstructed;
+    }
+  }
+
   return {
     ...batch,
     id: batch.id ?? "",
@@ -141,7 +196,7 @@ function normalizeBatch(batch: BatchApiShape): Batch {
     theory_time: Number(batch.theory_time ?? 0),
     practical_time: Number(batch.practical_time ?? 0),
     viva_time: Number(batch.viva_time ?? 0),
-    sections: batch.sections ?? [],
+    sections,
     jobRole: batch.jobRole ?? batch.job_role ?? null,
   };
 }

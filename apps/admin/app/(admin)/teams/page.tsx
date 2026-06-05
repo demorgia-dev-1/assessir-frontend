@@ -264,7 +264,7 @@ export default function TeamsPage() {
                       className="group transition-colors hover:bg-slate-50/50"
                     >
                       <td className="px-6 py-5 text-sm font-medium text-slate-400">
-                        #{team.id}
+                        {team.id}
                       </td>
                       <td className="px-6 py-5">
                         <span className="text-sm font-semibold text-slate-900">
