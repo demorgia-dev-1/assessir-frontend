@@ -157,13 +157,14 @@ const topicSlice = createSlice({
           state.hasNext = false;
           state.hasPrev = false;
         } else {
-          state.topics = action.payload.topics || [];
-          state.totalTopics = action.payload.totalTopics ?? action.payload.total ?? state.topics.length;
-          state.totalPages = action.payload.totalPages ?? 1;
-          state.currentPage = action.payload.page ?? 1;
-          state.limit = action.payload.limit ?? 10;
-          state.hasNext = action.payload.hasNext ?? false;
-          state.hasPrev = action.payload.hasPrev ?? false;
+          const payload = action.payload;
+          state.topics = payload.topics || [];
+          state.totalTopics = payload.totalTopics ?? payload.total ?? state.topics.length;
+          state.totalPages = payload.totalPages ?? 1;
+          state.currentPage = payload.page ?? 1;
+          state.limit = payload.limit ?? 10;
+          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       })
       .addCase(fetchTopics.rejected, (state, action) => {

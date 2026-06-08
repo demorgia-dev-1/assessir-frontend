@@ -44,14 +44,9 @@ export type BatchPayload = {
 
 export type Batch = Partial<BatchPayload> & {
   id: string | number;
-  jobRole?: {
-    id: string | number;
-    name: string;
-  } | null;
-  job_role?: {
-    id: string | number;
-    name: string;
-  } | null;
+  jobRole?: any;
+  job_role?: any;
+  jobrole?: any;
   theory_test?: any;
   practical_test?: any;
   viva_test?: any;
@@ -74,6 +69,10 @@ export type GetBatchesParams = {
 type BatchApiShape = Partial<Batch> & {
   jobRoleID?: string | number;
   job_role_id?: string | number;
+  jobrole_id?: string | number;
+  theory_test_id?: string | number;
+  practical_test_id?: string | number;
+  viva_test_id?: string | number;
 };
 
 interface BatchesState {
@@ -192,12 +191,18 @@ function normalizeBatch(batch: BatchApiShape): Batch {
     ...batch,
     id: batch.id ?? "",
     name: batch.name ?? "",
-    job_role_id: Number(batch.job_role_id ?? batch.jobRoleID ?? 0),
-    theory_time: Number(batch.theory_time ?? 0),
-    practical_time: Number(batch.practical_time ?? 0),
-    viva_time: Number(batch.viva_time ?? 0),
+    job_role_id: Number(
+      batch.job_role_id ?? batch.jobrole_id ?? batch.jobRoleID ?? 0
+    ),
+    theory_time: Number(
+      batch.theory_time ?? batch.theory_test_id ?? 0
+    ),
+    practical_time: Number(
+      batch.practical_time ?? batch.practical_test_id ?? 0
+    ),
+    viva_time: Number(batch.viva_time ?? batch.viva_test_id ?? 0),
     sections,
-    jobRole: batch.jobRole ?? batch.job_role ?? null,
+    jobRole: batch.jobRole ?? batch.job_role ?? batch.jobrole ?? null,
   };
 }
 
@@ -321,8 +326,8 @@ const batchesSlice = createSlice({
           state.totalPages = payload.totalPages ?? 1;
           state.currentPage = payload.page ?? 1;
           state.limit = payload.limit ?? 10;
-          state.hasNext = payload.hasNext ?? false;
-          state.hasPrev = payload.hasPrev ?? false;
+          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       )
       .addCase(fetchBatches.rejected, (state, action) => {

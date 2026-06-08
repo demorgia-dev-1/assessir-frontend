@@ -153,13 +153,15 @@ const sectorSlice = createSlice({
           state.hasNext = false;
           state.hasPrev = false;
         } else {
-          state.sectors = action.payload.sectors;
-          state.totalSectors = action.payload.totalSectors;
-          state.totalPages = action.payload.totalPages;
-          state.currentPage = action.payload.page;
-          state.limit = action.payload.limit;
-          state.hasNext = action.payload.hasNext;
-          state.hasPrev = action.payload.hasPrev;
+          const payload = action.payload;
+          state.sectors = payload.sectors || [];
+          state.totalSectors =
+            payload.totalSectors ?? payload.sectors?.length ?? 0;
+          state.totalPages = payload.totalPages ?? 1;
+          state.currentPage = payload.page ?? 1;
+          state.limit = payload.limit ?? state.limit;
+          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       })
       .addCase(fetchSectors.rejected, (state, action) => {

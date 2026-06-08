@@ -224,8 +224,8 @@ const teamsSlice = createSlice({
           state.totalPages = payload.totalPages ?? 1;
           state.currentPage = payload.page ?? 1;
           state.limit = payload.limit ?? 10;
-          state.hasNext = payload.hasNext ?? false;
-          state.hasPrev = payload.hasPrev ?? false;
+          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       })
       .addCase(fetchTeams.rejected, (state, action) => {

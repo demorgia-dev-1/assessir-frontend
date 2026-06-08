@@ -174,7 +174,7 @@ export default function ImportJobRolesModal({
   const hasCriticalErrors = validationErrors.some((e) => e.type === "error");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 modal-overlay animate-in fade-in duration-300">
       <div className="glass-panel w-full max-w-3xl rounded-[2.5rem] border border-white/80 p-8 shadow-soft shadow-slate-900/10 flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-slate-100 pb-5">

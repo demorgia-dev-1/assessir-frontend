@@ -68,7 +68,10 @@ function stripHtml(html: string) {
   }
 
   if (typeof window === "undefined") {
-    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    return html
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   const container = document.createElement("div");
@@ -90,14 +93,12 @@ function normalizeQuestionForm(question: Question): QuestionFormValues {
     difficultyLvl: question.difficultyLvl,
     topicID: String(question.topicID),
     metadata: {
-      options:
-        metadata.options?.length
-          ? metadata.options.map((option) => ({ ...option }))
-          : DEFAULT_OPTIONS.map((option) => ({ ...option })),
-      scores:
-        metadata.scores?.length
-          ? metadata.scores.map((score) => ({ ...score }))
-          : DEFAULT_SCORES.map((score) => ({ ...score })),
+      options: metadata.options?.length
+        ? metadata.options.map((option) => ({ ...option }))
+        : DEFAULT_OPTIONS.map((option) => ({ ...option })),
+      scores: metadata.scores?.length
+        ? metadata.scores.map((score) => ({ ...score }))
+        : DEFAULT_SCORES.map((score) => ({ ...score })),
     },
   };
 }
@@ -154,7 +155,9 @@ function validateForm(values: QuestionFormValues) {
     const validOptions = values.metadata.options.filter((option) =>
       stripHtml(option.text)
     );
-    const correctCount = validOptions.filter((option) => option.is_correct).length;
+    const correctCount = validOptions.filter(
+      (option) => option.is_correct
+    ).length;
 
     if (validOptions.length < 2) {
       return "MCQ questions need at least 2 options.";
@@ -167,7 +170,9 @@ function validateForm(values: QuestionFormValues) {
     return null;
   }
 
-  const validScores = values.metadata.scores.filter((score) => score.label.trim());
+  const validScores = values.metadata.scores.filter((score) =>
+    score.label.trim()
+  );
   if (validScores.length < 2) {
     return "Rubric questions need at least 2 score rows.";
   }
@@ -214,15 +219,23 @@ export default function QuestionsPage() {
   ]);
   const [activeCreateIndex, setActiveCreateIndex] = useState(0);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState<QuestionFormValues>(createEmptyForm());
+  const [editForm, setEditForm] = useState<QuestionFormValues>(
+    createEmptyForm()
+  );
   const [questionToEdit, setQuestionToEdit] = useState<Question | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
+  const [questionToDelete, setQuestionToDelete] = useState<Question | null>(
+    null
+  );
   const [dragActive, setDragActive] = useState(false);
   const [bulkTopicID, setBulkTopicID] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [parsedQuestions, setParsedQuestions] = useState<CreateQuestionInput[]>([]);
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [parsedQuestions, setParsedQuestions] = useState<CreateQuestionInput[]>(
+    []
+  );
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>(
+    []
+  );
 
   useEffect(() => {
     dispatch(fetchQuestions({ page: 1, limit: 10 }));
@@ -289,11 +302,15 @@ export default function QuestionsPage() {
       }
     }
 
-    const resultAction = await dispatch(createQuestions(createForms.map(buildCreatePayload)));
+    const resultAction = await dispatch(
+      createQuestions(createForms.map(buildCreatePayload))
+    );
 
     if (createQuestions.fulfilled.match(resultAction)) {
       toast.success(
-        `${createForms.length} question${createForms.length > 1 ? "s" : ""} created successfully.`
+        `${createForms.length} question${
+          createForms.length > 1 ? "s" : ""
+        } created successfully.`
       );
       handleCloseCreateModal();
       refreshQuestions();
@@ -375,11 +392,11 @@ export default function QuestionsPage() {
   };
 
   const processFile = (file: File) => {
-   if (!bulkTopicID) {
-  toast.error("Please select a topic before uploading questions.");
-  if (fileInputRef.current) fileInputRef.current.value = "";
-  return;
-}
+    if (!bulkTopicID) {
+      toast.error("Please select a topic before uploading questions.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     const isXlsx =
       file.type ===
@@ -427,7 +444,9 @@ export default function QuestionsPage() {
 
     const resultAction = await dispatch(createQuestions(parsedQuestions));
     if (createQuestions.fulfilled.match(resultAction)) {
-      toast.success(`${parsedQuestions.length} questions imported successfully.`);
+      toast.success(
+        `${parsedQuestions.length} questions imported successfully.`
+      );
       setSelectedFile(null);
       setParsedQuestions([]);
       setValidationErrors([]);
@@ -454,7 +473,9 @@ export default function QuestionsPage() {
             </h1>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-bold text-slate-950">{totalQuestions}</p>
+            <p className="text-3xl font-bold text-slate-950">
+              {totalQuestions}
+            </p>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Registered Questions
             </p>
@@ -462,9 +483,9 @@ export default function QuestionsPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[1.25fr_420px]">
-        <div className="glass-panel flex flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-          <div className="overflow-x-auto">
+      <div className="grid min-h-0 gap-6 xl:min-h-[calc(100vh-18rem)] xl:grid-cols-[1.25fr_420px]">
+        <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+          <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/30">
@@ -576,8 +597,8 @@ export default function QuestionsPage() {
                       colSpan={6}
                       className="px-6 py-20 text-center text-sm text-slate-500"
                     >
-                      No questions found. Create a single question or import them
-                      in bulk to get started.
+                      No questions found. Create a single question or import
+                      them in bulk to get started.
                     </td>
                   </tr>
                 )}
@@ -588,8 +609,14 @@ export default function QuestionsPage() {
           <div className="mt-auto flex items-center justify-between border-t border-slate-100 bg-slate-50/20 px-6 py-5">
             <div className="flex flex-col">
               <p className="text-sm text-slate-500">
-                Page <span className="font-semibold text-slate-950">{currentPage}</span>{" "}
-                of <span className="font-semibold text-slate-950">{totalPages}</span>
+                Page{" "}
+                <span className="font-semibold text-slate-950">
+                  {currentPage}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-slate-950">
+                  {totalPages}
+                </span>
               </p>
               <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-400">
                 Total {totalQuestions} records
@@ -625,7 +652,7 @@ export default function QuestionsPage() {
                     : "text-slate-600 hover:bg-slate-100"
                 }`}
               >
-                Add 
+                Add
               </button>
               <button
                 onClick={() => setPanelMode("bulk")}
@@ -732,17 +759,17 @@ export default function QuestionsPage() {
                 }`}
               >
                 <input
-  ref={fileInputRef}
-  type="file"
-  accept=".xlsx"
-  className="hidden"
-  onClick={(event) => event.stopPropagation()}
-  onChange={(event) => {
-    const file = event.target.files?.[0];
-    if (file) processFile(file);
-    event.target.value = "";
-  }}
-/>
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx"
+                  className="hidden"
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) processFile(file);
+                    event.target.value = "";
+                  }}
+                />
 
                 <div className="flex h-15 w-15 items-center justify-center rounded-[1.5rem] bg-slate-50 text-slate-500 shadow-sm">
                   <FiUploadCloud className="h-7 w-7" />
@@ -770,10 +797,16 @@ export default function QuestionsPage() {
                       Import Summary
                     </h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      Parsed records: <span className="font-semibold">{parsedQuestions.length}</span>
+                      Parsed records:{" "}
+                      <span className="font-semibold">
+                        {parsedQuestions.length}
+                      </span>
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Validation errors: <span className="font-semibold">{criticalErrors.length}</span>
+                      Validation errors:{" "}
+                      <span className="font-semibold">
+                        {criticalErrors.length}
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -833,7 +866,9 @@ export default function QuestionsPage() {
               <button
                 type="button"
                 onClick={handleBulkImport}
-                disabled={creating || !parsedQuestions.length || !!criticalErrors.length}
+                disabled={
+                  creating || !parsedQuestions.length || !!criticalErrors.length
+                }
                 className="mt-6 w-full rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:opacity-90 disabled:opacity-50"
               >
                 {creating ? "Importing..." : "Import Questions"}
@@ -883,7 +918,9 @@ export default function QuestionsPage() {
                     </p>
                     <div
                       className="prose prose-sm mt-3 max-w-none text-slate-700"
-                      dangerouslySetInnerHTML={{ __html: selectedQuestion.text }}
+                      dangerouslySetInnerHTML={{
+                        __html: selectedQuestion.text,
+                      }}
                     />
                   </div>
 
@@ -910,60 +947,69 @@ export default function QuestionsPage() {
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Topic
                     </p>
-                      <p className="mt-1 text-sm font-semibold text-slate-950">
+                    <p className="mt-1 text-sm font-semibold text-slate-950">
                       {selectedQuestion.topic?.name ||
                         topics.find(
                           (topic) =>
-                            String(topic.id) === String(selectedQuestion.topicID)
+                            String(topic.id) ===
+                            String(selectedQuestion.topicID)
                         )?.name ||
                         `Topic ${selectedQuestion.topicID}`}
                     </p>
                   </div>
 
-                  {selectedQuestion.type === "mcq" && selectedQuestionMetadata?.options && (
-                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        Options
-                      </p>
-                      <div className="mt-3 space-y-2">
-                        {selectedQuestionMetadata.options.map((option, index) => (
-                          <div
-                            key={`${option.text}-${index}`}
-                            className={`rounded-xl border px-4 py-3 text-sm ${
-                              option.is_correct
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                : "border-slate-200 bg-white text-slate-700"
-                            }`}
-                          >
-                            <div
-                              dangerouslySetInnerHTML={{ __html: option.text }}
-                            />
-                          </div>
-                        ))}
+                  {selectedQuestion.type === "mcq" &&
+                    selectedQuestionMetadata?.options && (
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Options
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {selectedQuestionMetadata.options.map(
+                            (option, index) => (
+                              <div
+                                key={`${option.text}-${index}`}
+                                className={`rounded-xl border px-4 py-3 text-sm ${
+                                  option.is_correct
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-slate-200 bg-white text-slate-700"
+                                }`}
+                              >
+                                <div
+                                  dangerouslySetInnerHTML={{
+                                    __html: option.text,
+                                  }}
+                                />
+                              </div>
+                            )
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {selectedQuestion.type === "rubric" && selectedQuestionMetadata?.scores && (
-                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        Rubric Scores
-                      </p>
-                      <div className="mt-3 space-y-2">
-                        {selectedQuestionMetadata.scores.map((score, index) => (
-                          <div
-                            key={`${score.label}-${index}`}
-                            className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
-                          >
-                            <span>{score.label}</span>
-                            <span className="font-semibold text-slate-950">
-                              {score.percentage}%
-                            </span>
-                          </div>
-                        ))}
+                  {selectedQuestion.type === "rubric" &&
+                    selectedQuestionMetadata?.scores && (
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Rubric Scores
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {selectedQuestionMetadata.scores.map(
+                            (score, index) => (
+                              <div
+                                key={`${score.label}-${index}`}
+                                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                              >
+                                <span>{score.label}</span>
+                                <span className="font-semibold text-slate-950">
+                                  {score.percentage}%
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               ) : (
                 <p className="mt-6 text-center text-sm text-slate-500">
@@ -1003,10 +1049,14 @@ export default function QuestionsPage() {
               value={activeCreateForm}
               onChange={updateActiveCreateForm}
               onSubmit={handleCreateQuestion}
-              submitLabel={`Save ${createForms.length} Question${createForms.length > 1 ? "s" : ""}`}
+              submitLabel={`Save ${createForms.length} Question${
+                createForms.length > 1 ? "s" : ""
+              }`}
               submitting={creating}
               allowBatchActions
-              batchPositionLabel={`Question ${activeCreateIndex + 1} of ${createForms.length}`}
+              batchPositionLabel={`Question ${activeCreateIndex + 1} of ${
+                createForms.length
+              }`}
               onAddMore={handleAddMoreQuestion}
               onPrevious={() =>
                 setActiveCreateIndex((current) => Math.max(0, current - 1))
@@ -1074,7 +1124,8 @@ export default function QuestionsPage() {
               Are you sure you want to delete this question?
             </p>
             <p className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800">
-              {stripHtml(questionToDelete.text) || `Question #${questionToDelete.id}`}
+              {stripHtml(questionToDelete.text) ||
+                `Question #${questionToDelete.id}`}
             </p>
 
             <div className="mt-6 flex gap-3">

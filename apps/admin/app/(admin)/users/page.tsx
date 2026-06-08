@@ -140,10 +140,10 @@ export default function UsersPage() {
 
      
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_350px]">
+      <div className="grid min-h-0 gap-6 lg:min-h-[calc(100vh-18rem)] lg:grid-cols-[1fr_350px]">
         {/* Table Section */}
-        <div className="glass-panel flex flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-          <div className="overflow-x-auto">
+        <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+          <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/30">

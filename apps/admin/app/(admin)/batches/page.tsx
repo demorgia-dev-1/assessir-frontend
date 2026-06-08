@@ -136,8 +136,17 @@ function getBatchJobRoleName(batch: Batch) {
   return (
     batch.jobRole?.name ||
     batch.job_role?.name ||
+    batch.jobrole?.name ||
     `Job Role ${batch.job_role_id || "N/A"}`
   );
+}
+
+function getBatchSectorName(batch: Batch) {
+  const sector =
+    batch.jobRole?.sector ||
+    batch.job_role?.sector ||
+    batch.jobrole?.sector;
+  return sector?.name || "";
 }
 
 function numberOrZero(value: string) {
@@ -166,7 +175,12 @@ function getQuestionTotal(data: any): number {
 function normalizeBatchToForm(batch: Batch): BatchFormState {
   return {
     name: batch.name || "",
-    sector_id: String(batch.jobRole?.id ? batch.jobRole?.id : ""),
+    sector_id: String(
+      batch.jobRole?.sector_id ??
+        batch.job_role?.sector_id ??
+        batch.jobrole?.sector_id ??
+        ""
+    ),
     job_role_id: String(batch.job_role_id || ""),
     theory_time: String(batch.theory_time ?? 30),
     practical_time: String(batch.practical_time ?? 30),
@@ -739,8 +753,8 @@ export default function BatchesPage() {
         </div>
       </header>
 
-      <div className="glass-panel flex flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-        <div className="overflow-x-auto">
+      <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/30">
@@ -795,7 +809,16 @@ export default function BatchesPage() {
                       {batch.name || "Untitled batch"}
                     </td>
                     <td className="px-6 py-5 text-sm text-slate-600">
-                      {getBatchJobRoleName(batch)}
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-900">
+                          {getBatchJobRoleName(batch)}
+                        </span>
+                        {getBatchSectorName(batch) && (
+                          <span className="text-xs text-slate-400 font-medium mt-0.5">
+                            {getBatchSectorName(batch)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-5 text-sm font-medium text-slate-600">
                       {batch.theory_time ?? 0} / {batch.practical_time ?? 0} /{" "}
@@ -877,7 +900,7 @@ export default function BatchesPage() {
       </div>
 
       {modalMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
           <form
             onSubmit={handleSubmit}
             className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl"
@@ -1561,7 +1584,7 @@ export default function BatchesPage() {
       )}
 
       {bulkOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
           <div className="w-full max-w-xl rounded-[2rem] border border-white/80 bg-white p-7 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1685,7 +1708,7 @@ export default function BatchesPage() {
       )}
 
       {detailsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
           <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-7 py-5">
               <h2 className="text-xl font-semibold text-slate-950">
@@ -1718,7 +1741,7 @@ export default function BatchesPage() {
                       {getBatchJobRoleName(selectedBatch)}
                     </p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  {/* <div className="grid gap-3 sm:grid-cols-3">
                     <Stat
                       label="Theory"
                       value={selectedBatch.theory_time ?? 0}
@@ -1728,7 +1751,7 @@ export default function BatchesPage() {
                       value={selectedBatch.practical_time ?? 0}
                     />
                     <Stat label="Viva" value={selectedBatch.viva_time ?? 0} />
-                  </div>
+                  </div> */}
                   <TestDetailsSection test={selectedBatch.theory_test} type="theory" />
                   <TestDetailsSection test={selectedBatch.practical_test} type="practical" />
                   <TestDetailsSection test={selectedBatch.viva_test} type="viva" />
@@ -1742,7 +1765,7 @@ export default function BatchesPage() {
       )}
 
       {batchToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
           <div className="w-full max-w-md rounded-[2rem] border border-white/80 bg-white p-7 shadow-2xl">
             <h2 className="text-xl font-semibold text-slate-950">
               Delete Batch

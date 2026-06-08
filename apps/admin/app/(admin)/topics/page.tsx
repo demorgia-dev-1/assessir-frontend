@@ -150,9 +150,9 @@ export default function TopicsPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_350px]">
-        <div className="glass-panel flex flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-          <div className="overflow-x-auto">
+      <div className="grid min-h-0 gap-6 lg:min-h-[calc(100vh-18rem)] lg:grid-cols-[1fr_350px]">
+        <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+          <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/30">
@@ -414,7 +414,7 @@ export default function TopicsPage() {
       </div>
 
       {editModalOpen && topicToEdit && (
-        <div className="fixed inset-0 z-50 flex animate-in items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex animate-in items-center justify-center bg-slate-950/40 p-4 modal-overlay fade-in duration-200">
           <div className="glass-panel w-full max-w-md animate-in rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold tracking-tight text-slate-950">
@@ -471,7 +471,7 @@ export default function TopicsPage() {
       )}
 
       {deleteModalOpen && topicToDelete && (
-        <div className="fixed inset-0 z-50 flex animate-in items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex animate-in items-center justify-center bg-slate-950/40 p-4 modal-overlay fade-in duration-200">
           <div className="glass-panel w-full max-w-md animate-in rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
