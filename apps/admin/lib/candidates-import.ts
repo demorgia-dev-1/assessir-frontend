@@ -1,20 +1,18 @@
 import * as XLSX from "xlsx";
-import type { GroupPayload } from "@/store/slices/groups-slice";
 
-export interface GroupValidationError {
+export interface CandidateValidationError {
   type: "error" | "warning";
   message: string;
   details?: string;
 }
 
-export interface ParseGroupsResult {
-  groups: GroupPayload[];
-  errors: GroupValidationError[];
+export interface ParseCandidatesResult {
+  candidates: { enrollment_no: string; password: string }[];
+  errors: CandidateValidationError[];
 }
 
-const GROUPS_SHEET = "Groups";
-const GROUP_HEADERS = [
-  "GROUP NAME",
+const CANDIDATES_SHEET = "Candidates";
+const CANDIDATE_HEADERS = [
   "ENROLLMENT NO",
   "PASSWORD",
 ] as const;
@@ -34,32 +32,26 @@ function buildSheet<T extends Record<string, unknown>>(
   return sheet;
 }
 
-export function downloadGroupsTemplate() {
+export function downloadCandidatesTemplate(batchName: string) {
   const rows = [
     {
-      "GROUP NAME": "Group A",
       "ENROLLMENT NO": "ENR001",
       "PASSWORD": "Password1",
     },
     {
-      "GROUP NAME": "Group A",
       "ENROLLMENT NO": "ENR002",
       "PASSWORD": "Password2",
-    },
-    {
-      "GROUP NAME": "Group B",
-      "ENROLLMENT NO": "ENR003",
-      "PASSWORD": "Password3",
     },
   ];
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
     workbook,
-    buildSheet(rows, GROUP_HEADERS),
-    GROUPS_SHEET
+    buildSheet(rows, CANDIDATE_HEADERS),
+    CANDIDATES_SHEET
   );
-  XLSX.writeFile(workbook, "groups_template.xlsx", { bookType: "xlsx" });
+  const safeBatchName = batchName.replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+  XLSX.writeFile(workbook, `${safeBatchName}_candidates_template.xlsx`, { bookType: "xlsx" });
 }
 
 function getSheetRows(
@@ -77,42 +69,33 @@ function getSheetRows(
   );
 }
 
-export function parseGroupsExcelFile(arrayBuffer: ArrayBuffer): ParseGroupsResult {
+export function parseCandidatesExcelFile(arrayBuffer: ArrayBuffer): ParseCandidatesResult {
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
-  const rows = getSheetRows(workbook, GROUPS_SHEET);
-  const errors: GroupValidationError[] = [];
+  const rows = getSheetRows(workbook, CANDIDATES_SHEET);
+  const errors: CandidateValidationError[] = [];
 
   if (!rows.length) {
     return {
-      groups: [],
+      candidates: [],
       errors: [
         {
           type: "error",
-          message: "Missing or empty Groups sheet.",
-          details: "Add a sheet named Groups with the provided template columns.",
+          message: "Missing or empty Candidates sheet.",
+          details: "Add a sheet named Candidates with the columns ENROLLMENT NO and PASSWORD.",
         },
       ],
     };
   }
 
-  const groupsMap = new Map<string, GroupPayload>();
-  const candidateKeyMap = new Map<string, number>();
+  const candidates: { enrollment_no: string; password: string }[] = [];
+  const seenEnrollments = new Set<string>();
 
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
-    const groupName = stringValue(row["GROUP NAME"]);
     const enrollmentNo = stringValue(row["ENROLLMENT NO"]);
     const password = stringValue(row["PASSWORD"]);
 
-    if (!groupName && !enrollmentNo && !password) {
-      return;
-    }
-
-    if (!groupName) {
-      errors.push({
-        type: "error",
-        message: `Row ${rowNumber}: group name is required.`,
-      });
+    if (!enrollmentNo && !password) {
       return;
     }
 
@@ -132,41 +115,28 @@ export function parseGroupsExcelFile(arrayBuffer: ArrayBuffer): ParseGroupsResul
       return;
     }
 
-    const candidateKey = `${groupName.toLowerCase()}::${enrollmentNo.toLowerCase()}`;
-    if (candidateKeyMap.has(candidateKey)) {
+    const normEnrollment = enrollmentNo.toLowerCase();
+    if (seenEnrollments.has(normEnrollment)) {
       errors.push({
         type: "warning",
-        message: `Row ${rowNumber}: duplicate candidate skipped.`,
-        details: `${groupName} / ${enrollmentNo}`,
+        message: `Row ${rowNumber}: duplicate enrollment number "${enrollmentNo}" skipped.`,
       });
       return;
     }
 
-    candidateKeyMap.set(candidateKey, rowNumber);
-
-    if (!groupsMap.has(groupName)) {
-      groupsMap.set(groupName, {
-        name: groupName,
-        candidates: [],
-      });
-    }
-
-    groupsMap.get(groupName)!.candidates.push({
+    seenEnrollments.add(normEnrollment);
+    candidates.push({
       enrollment_no: enrollmentNo,
       password,
     });
   });
 
-  const groups = Array.from(groupsMap.values()).filter(
-    (group) => group.candidates.length > 0
-  );
-
-  if (!groups.length) {
+  if (!candidates.length && !errors.length) {
     errors.push({
       type: "error",
-      message: "No valid groups found in the Excel file.",
+      message: "No valid candidates found in the Excel file.",
     });
   }
 
-  return { groups, errors };
+  return { candidates, errors };
 }

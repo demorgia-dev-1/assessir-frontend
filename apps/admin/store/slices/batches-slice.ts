@@ -5,6 +5,15 @@ export type BatchSectionType = "theory" | "practical" | "viva";
 export type BatchDifficultyLevel = "easy" | "medium" | "hard";
 export type BatchQuestionType = "mcq" | "rubric";
 
+export type BatchCandidate = {
+  id?: string | number;
+  enrollment_no: string;
+  password: string;
+  batch_id?: string | number;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type BatchPcPayload = {
   topic_id: number;
   nos_code: string;
@@ -37,7 +46,9 @@ export type BatchPayload = {
   name: string;
   job_role_id: number;
   theory_time: number;
+
   practical_time: number;
+
   viva_time: number;
   sections: BatchSectionPayload[];
 };
@@ -89,6 +100,9 @@ interface BatchesState {
   deleting: boolean;
   viewLoading: boolean;
   selectedBatch: Batch | null;
+  batchCandidates: BatchCandidate[];
+  candidatesLoading: boolean;
+  candidatesError: string | null;
   error: string | null;
 }
 
@@ -106,6 +120,9 @@ const initialState: BatchesState = {
   deleting: false,
   viewLoading: false,
   selectedBatch: null,
+  batchCandidates: [],
+  candidatesLoading: false,
+  candidatesError: null,
   error: null,
 };
 
@@ -136,9 +153,12 @@ function getErrorMessage(error: any, fallback: string) {
 
 function normalizeBatch(batch: BatchApiShape): Batch {
   let sections = batch.sections ?? [];
-  if ((!sections || sections.length === 0) && (batch.theory_test || batch.practical_test || batch.viva_test)) {
+  if (
+    (!sections || sections.length === 0) &&
+    (batch.theory_test || batch.practical_test || batch.viva_test)
+  ) {
     const reconstructed: BatchSectionPayload[] = [];
-    
+
     const parseTest = (test: any, type: BatchSectionType) => {
       if (!test || !Array.isArray(test.sections)) return;
       test.sections.forEach((sec: any) => {
@@ -146,11 +166,12 @@ function normalizeBatch(batch: BatchApiShape): Batch {
         (sec.questions || []).forEach((q: any) => {
           const nosCode = q.nos?.code || q.nos?.nos_code || q.nos_code || "";
           const topicId = Number(q.topic_id || q.topic?.id || 0);
-          const difficulty = (q.difficulty_lvl || "easy") as BatchDifficultyLevel;
+          const difficulty = (q.difficulty_lvl ||
+            "easy") as BatchDifficultyLevel;
           const qType = (q.type || "mcq") as BatchQuestionType;
           const correctMark = Number(q.correct_mark ?? 0);
           const negativeMark = Number(q.negative_mark ?? 0);
-          
+
           const key = `${nosCode}_${topicId}_${difficulty}_${qType}_${correctMark}_${negativeMark}`;
           if (!groups[key]) {
             groups[key] = {
@@ -166,11 +187,14 @@ function normalizeBatch(batch: BatchApiShape): Batch {
           }
           groups[key].question_count += 1;
         });
-        
+
         const nosList = Object.values(groups);
         if (nosList.length > 0) {
           reconstructed.push({
-            name: sec.Name || sec.name || `${type.charAt(0).toUpperCase()}${type.slice(1)} Section`,
+            name:
+              sec.Name ||
+              sec.name ||
+              `${type.charAt(0).toUpperCase()}${type.slice(1)} Section`,
             type,
             nos_list: nosList,
           });
@@ -181,7 +205,7 @@ function normalizeBatch(batch: BatchApiShape): Batch {
     parseTest(batch.theory_test, "theory");
     parseTest(batch.practical_test, "practical");
     parseTest(batch.viva_test, "viva");
-    
+
     if (reconstructed.length > 0) {
       sections = reconstructed;
     }
@@ -194,13 +218,7 @@ function normalizeBatch(batch: BatchApiShape): Batch {
     job_role_id: Number(
       batch.job_role_id ?? batch.jobrole_id ?? batch.jobRoleID ?? 0
     ),
-    theory_time: Number(
-      batch.theory_time ?? batch.theory_test_id ?? 0
-    ),
-    practical_time: Number(
-      batch.practical_time ?? batch.practical_test_id ?? 0
-    ),
-    viva_time: Number(batch.viva_time ?? batch.viva_test_id ?? 0),
+
     sections,
     jobRole: batch.jobRole ?? batch.job_role ?? batch.jobrole ?? null,
   };
@@ -240,11 +258,13 @@ export const createBatches = createAsyncThunk(
   "batches/createBatches",
   async (batches: CreateBatchesInput, { rejectWithValue }) => {
     try {
-      console.log( JSON.stringify(batches, null, 2))
+      console.log(JSON.stringify(batches, null, 2));
       const response = await api.post("/batches", batches);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(getErrorMessage(error, "Failed to create batches"));
+      return rejectWithValue(
+        getErrorMessage(error, "Failed to create batches")
+      );
     }
   }
 );
@@ -269,6 +289,45 @@ export const deleteBatch = createAsyncThunk(
       return id;
     } catch (error: any) {
       return rejectWithValue(getErrorMessage(error, "Failed to delete batch"));
+    }
+  }
+);
+
+export const fetchBatchCandidates = createAsyncThunk(
+  "batches/fetchBatchCandidates",
+  async (batchId: string | number, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/batches/${batchId}/candidates`);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        getErrorMessage(error, "Failed to fetch candidates")
+      );
+    }
+  }
+);
+
+export const createBatchCandidates = createAsyncThunk(
+  "batches/createBatchCandidates",
+  async (
+    {
+      batchId,
+      candidates,
+    }: {
+      batchId: string | number;
+      candidates: Array<{ enrollment_no: string; password: string }>;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const response = await api.post(`/batches/${batchId}/candidates`, {
+        candidates,
+      });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        getErrorMessage(error, "Failed to create candidates")
+      );
     }
   }
 );
@@ -326,7 +385,8 @@ const batchesSlice = createSlice({
           state.totalPages = payload.totalPages ?? 1;
           state.currentPage = payload.page ?? 1;
           state.limit = payload.limit ?? 10;
-          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasNext =
+            payload.hasNext ?? state.currentPage < state.totalPages;
           state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       )
@@ -339,10 +399,13 @@ const batchesSlice = createSlice({
         state.error = null;
         state.selectedBatch = null;
       })
-      .addCase(fetchBatchById.fulfilled, (state, action: PayloadAction<BatchApiShape>) => {
-        state.viewLoading = false;
-        state.selectedBatch = normalizeBatch(action.payload);
-      })
+      .addCase(
+        fetchBatchById.fulfilled,
+        (state, action: PayloadAction<BatchApiShape>) => {
+          state.viewLoading = false;
+          state.selectedBatch = normalizeBatch(action.payload);
+        }
+      )
       .addCase(fetchBatchById.rejected, (state, action) => {
         state.viewLoading = false;
         state.error = action.payload as string;
@@ -362,17 +425,22 @@ const batchesSlice = createSlice({
         state.updating = true;
         state.error = null;
       })
-      .addCase(updateBatch.fulfilled, (state, action: PayloadAction<BatchApiShape>) => {
-        state.updating = false;
-        const updatedBatch = normalizeBatch(action.payload);
-        const index = state.batches.findIndex((batch) => batch.id === updatedBatch.id);
-        if (index !== -1) {
-          state.batches[index] = updatedBatch;
+      .addCase(
+        updateBatch.fulfilled,
+        (state, action: PayloadAction<BatchApiShape>) => {
+          state.updating = false;
+          const updatedBatch = normalizeBatch(action.payload);
+          const index = state.batches.findIndex(
+            (batch) => batch.id === updatedBatch.id
+          );
+          if (index !== -1) {
+            state.batches[index] = updatedBatch;
+          }
+          if (state.selectedBatch?.id === updatedBatch.id) {
+            state.selectedBatch = updatedBatch;
+          }
         }
-        if (state.selectedBatch?.id === updatedBatch.id) {
-          state.selectedBatch = updatedBatch;
-        }
-      })
+      )
       .addCase(updateBatch.rejected, (state, action) => {
         state.updating = false;
         state.error = action.payload as string;
@@ -381,17 +449,56 @@ const batchesSlice = createSlice({
         state.deleting = true;
         state.error = null;
       })
-      .addCase(deleteBatch.fulfilled, (state, action: PayloadAction<string | number>) => {
-        state.deleting = false;
-        state.batches = state.batches.filter((batch) => batch.id !== action.payload);
-        state.totalBatches = Math.max(0, state.totalBatches - 1);
-        if (state.selectedBatch?.id === action.payload) {
-          state.selectedBatch = null;
+      .addCase(
+        deleteBatch.fulfilled,
+        (state, action: PayloadAction<string | number>) => {
+          state.deleting = false;
+          state.batches = state.batches.filter(
+            (batch) => batch.id !== action.payload
+          );
+          state.totalBatches = Math.max(0, state.totalBatches - 1);
+          if (state.selectedBatch?.id === action.payload) {
+            state.selectedBatch = null;
+          }
         }
-      })
+      )
       .addCase(deleteBatch.rejected, (state, action) => {
         state.deleting = false;
         state.error = action.payload as string;
+      })
+      .addCase(fetchBatchCandidates.pending, (state) => {
+        state.candidatesLoading = true;
+        state.candidatesError = null;
+        state.batchCandidates = [];
+      })
+      .addCase(
+        fetchBatchCandidates.fulfilled,
+        (state, action: PayloadAction<any>) => {
+          state.candidatesLoading = false;
+          const data = action.payload;
+          if (Array.isArray(data)) {
+            state.batchCandidates = data;
+          } else if (data && Array.isArray(data.candidates)) {
+            state.batchCandidates = data.candidates;
+          } else {
+            state.batchCandidates = [];
+          }
+        }
+      )
+      .addCase(fetchBatchCandidates.rejected, (state, action) => {
+        state.candidatesLoading = false;
+        state.candidatesError = action.payload as string;
+      })
+      .addCase(createBatchCandidates.pending, (state) => {
+        state.candidatesLoading = true;
+        state.candidatesError = null;
+      })
+      .addCase(createBatchCandidates.fulfilled, (state) => {
+        state.candidatesLoading = false;
+      })
+      .addCase(createBatchCandidates.rejected, (state, action) => {
+        state.candidatesLoading = false;
+        state.candidatesError = action.payload as string;
       });
   },
 });

@@ -10,6 +10,11 @@ import {
   FiTrash2,
   FiUploadCloud,
   FiX,
+  FiUsers,
+  FiAlertTriangle,
+  FiCheck,
+  FiKey,
+  FiFileText,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -25,11 +30,17 @@ import {
   fetchBatchById,
   fetchBatches,
   updateBatch,
+  fetchBatchCandidates,
+  createBatchCandidates,
 } from "@/store/slices/batches-slice";
 import {
   downloadBatchesTemplate,
   parseBatchesExcelFile,
 } from "@/lib/batches-import";
+import {
+  downloadCandidatesTemplate,
+  parseCandidatesExcelFile,
+} from "@/lib/candidates-import";
 import {
   clearSelectedJobRole,
   fetchJobRoleById,
@@ -72,9 +83,7 @@ type BatchFormState = {
   name: string;
   sector_id: string;
   job_role_id: string;
-  theory_time: string;
-  practical_time: string;
-  viva_time: string;
+
   sections: SectionForm[];
 };
 
@@ -125,9 +134,7 @@ function createEmptyForm(): BatchFormState {
     name: "",
     sector_id: "",
     job_role_id: "",
-    theory_time: "30",
-    practical_time: "30",
-    viva_time: "30",
+
     sections: SECTION_TYPES.map(createSection),
   };
 }
@@ -143,9 +150,7 @@ function getBatchJobRoleName(batch: Batch) {
 
 function getBatchSectorName(batch: Batch) {
   const sector =
-    batch.jobRole?.sector ||
-    batch.job_role?.sector ||
-    batch.jobrole?.sector;
+    batch.jobRole?.sector || batch.job_role?.sector || batch.jobrole?.sector;
   return sector?.name || "";
 }
 
@@ -182,9 +187,7 @@ function normalizeBatchToForm(batch: Batch): BatchFormState {
         ""
     ),
     job_role_id: String(batch.job_role_id || ""),
-    theory_time: String(batch.theory_time ?? 30),
-    practical_time: String(batch.practical_time ?? 30),
-    viva_time: String(batch.viva_time ?? 30),
+
     sections: batch.sections?.length
       ? batch.sections.map((section) => ({
           name: section.name,
@@ -262,9 +265,9 @@ function buildPayload(form: BatchFormState): BatchPayload | null {
   return {
     name: form.name.trim(),
     job_role_id: Number(form.job_role_id),
-    theory_time: numberOrZero(form.theory_time),
-    practical_time: numberOrZero(form.practical_time),
-    viva_time: numberOrZero(form.viva_time),
+    theory_time: 0, // Provide default or calculated value
+    practical_time: 0, // Provide default or calculated value
+    viva_time: 0, // Provide default or calculated value
     sections,
   };
 }
@@ -284,6 +287,9 @@ export default function BatchesPage() {
     deleting,
     viewLoading,
     selectedBatch,
+    batchCandidates,
+    candidatesLoading,
+    candidatesError,
     error,
   } = useAppSelector((state) => state.batches);
   const { sectors } = useAppSelector((state) => state.sectors);
@@ -293,7 +299,7 @@ export default function BatchesPage() {
     viewLoading: jobRoleDetailLoading,
   } = useAppSelector((state) => state.jobRoles);
   const { topics } = useAppSelector((state) => state.topics);
-
+  console.log(batches);
   const [form, setForm] = useState<BatchFormState>(createEmptyForm());
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [batchToEdit, setBatchToEdit] = useState<Batch | null>(null);
@@ -307,6 +313,21 @@ export default function BatchesPage() {
   const [questionCounts, setQuestionCounts] = useState<Record<string, number>>(
     {}
   );
+  const [detailsTab, setDetailsTab] = useState<"structure" | "candidates">(
+    "structure"
+  );
+  const [isAddingManually, setIsAddingManually] = useState(false);
+  const [manualCandidates, setManualCandidates] = useState<
+    Array<{ enrollment_no: string; password: string }>
+  >([{ enrollment_no: "", password: "" }]);
+  const [isUploadingExcel, setIsUploadingExcel] = useState(false);
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [excelValidationErrors, setExcelValidationErrors] = useState<
+    Array<{ type: "error" | "warning"; message: string }>
+  >([]);
+  const [excelParsedCandidates, setExcelParsedCandidates] = useState<
+    Array<{ enrollment_no: string; password: string }>
+  >([]);
 
   useEffect(() => {
     if (error) {
@@ -327,7 +348,7 @@ export default function BatchesPage() {
       dispatch(fetchJobRoleById(form.job_role_id));
       return;
     }
-    
+
     if (bulkJobRoleId && bulkOpen) {
       dispatch(fetchJobRoleById(bulkJobRoleId));
       return;
@@ -368,20 +389,30 @@ export default function BatchesPage() {
     }
 
     const nosList = selectedJobRole.nos_list || [];
-    const hasTheory = nosList.some((nos) => Number(nos.total_theory_marks) > 0) || Number(selectedJobRole.total_theory_marks) > 0;
-    const hasPractical = nosList.some((nos) => Number(nos.total_practical_marks) > 0) || Number(selectedJobRole.total_practical_marks) > 0;
-    const hasViva = nosList.some((nos) => Number(nos.total_viva_marks) > 0) || Number(selectedJobRole.total_viva_marks) > 0;
+    const hasTheory =
+      nosList.some((nos) => Number(nos.total_theory_marks) > 0) ||
+      Number(selectedJobRole.total_theory_marks) > 0;
+    const hasPractical =
+      nosList.some((nos) => Number(nos.total_practical_marks) > 0) ||
+      Number(selectedJobRole.total_practical_marks) > 0;
+    const hasViva =
+      nosList.some((nos) => Number(nos.total_viva_marks) > 0) ||
+      Number(selectedJobRole.total_viva_marks) > 0;
 
-    const buildNosListForSection = (sectionType: BatchSectionType): NosForm[] => {
+    const buildNosListForSection = (
+      sectionType: BatchSectionType
+    ): NosForm[] => {
       if (!nosList.length) return [createNos()];
-      return nosList.map((nos) => createNos({
-        nos_code: getNosCode(nos),
-        question_count: "1",
-        difficulty_lvl: sectionType === "practical" ? "medium" : "easy",
-        question_type: sectionType === "practical" ? "rubric" : "mcq",
-        correct_mark: "0",
-        negative_mark: "0",
-      }));
+      return nosList.map((nos) =>
+        createNos({
+          nos_code: getNosCode(nos),
+          question_count: "1",
+          difficulty_lvl: sectionType === "practical" ? "medium" : "easy",
+          question_type: sectionType === "practical" ? "rubric" : "mcq",
+          correct_mark: "0",
+          negative_mark: "0",
+        })
+      );
     };
 
     const sections: SectionForm[] = [];
@@ -642,7 +673,15 @@ export default function BatchesPage() {
 
   const handleView = (id: string | number) => {
     setDetailsOpen(true);
+    setDetailsTab("structure");
+    setIsAddingManually(false);
+    setManualCandidates([{ enrollment_no: "", password: "" }]);
+    setIsUploadingExcel(false);
+    setExcelFile(null);
+    setExcelValidationErrors([]);
+    setExcelParsedCandidates([]);
     dispatch(fetchBatchById(id));
+    dispatch(fetchBatchCandidates(id));
   };
 
   const handleConfirmDelete = async () => {
@@ -658,6 +697,103 @@ export default function BatchesPage() {
       if (selectedBatch?.id === batchToDelete.id) {
         dispatch(clearSelectedBatch());
       }
+    }
+  };
+
+  const handleDownloadCandidatesTemplate = () => {
+    if (selectedBatch) {
+      downloadCandidatesTemplate(
+        selectedBatch.name || `batch_${selectedBatch.id}`
+      );
+    }
+  };
+
+  const handleManualCandidateSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedBatch) return;
+
+    const validCandidates = manualCandidates
+      .map((c) => ({
+        enrollment_no: c.enrollment_no.trim(),
+        password: c.password.trim(),
+      }))
+      .filter((c) => c.enrollment_no && c.password);
+
+    if (!validCandidates.length) {
+      toast.error(
+        "Add at least one candidate with enrollment number and password."
+      );
+      return;
+    }
+
+    const actionResult = await dispatch(
+      createBatchCandidates({
+        batchId: selectedBatch.id,
+        candidates: validCandidates,
+      })
+    );
+
+    if (createBatchCandidates.fulfilled.match(actionResult)) {
+      toast.success("Candidates added successfully.");
+      setIsAddingManually(false);
+      setManualCandidates([{ enrollment_no: "", password: "" }]);
+      dispatch(fetchBatchCandidates(selectedBatch.id));
+    }
+  };
+
+  const handleExcelCandidatesFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!file.name.endsWith(".xlsx")) {
+      toast.error("Please upload a valid Excel file (.xlsx)");
+      return;
+    }
+
+    setExcelFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const arrayBuffer = e.target?.result as ArrayBuffer;
+      if (!arrayBuffer) return;
+
+      const result = parseCandidatesExcelFile(arrayBuffer);
+      setExcelParsedCandidates(result.candidates);
+      setExcelValidationErrors(result.errors);
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read Excel file.");
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleSaveExcelCandidates = async () => {
+    if (!selectedBatch || !excelParsedCandidates.length) return;
+
+    if (excelValidationErrors.some((err) => err.type === "error")) {
+      toast.error("Please fix Excel validation errors before importing.");
+      return;
+    }
+
+    const actionResult = await dispatch(
+      createBatchCandidates({
+        batchId: selectedBatch.id,
+        candidates: excelParsedCandidates,
+      })
+    );
+
+    if (createBatchCandidates.fulfilled.match(actionResult)) {
+      toast.success(
+        `Imported ${excelParsedCandidates.length} candidates successfully.`
+      );
+      setExcelFile(null);
+      setExcelParsedCandidates([]);
+      setExcelValidationErrors([]);
+      setIsUploadingExcel(false);
+      dispatch(fetchBatchCandidates(selectedBatch.id));
     }
   };
 
@@ -767,9 +903,7 @@ export default function BatchesPage() {
                 <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Job Role
                 </th>
-                <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Time T/P/V
-                </th>
+
                 <th className="px-6 py-5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Actions
                 </th>
@@ -785,9 +919,7 @@ export default function BatchesPage() {
                     <td className="px-6 py-5">
                       <div className="h-4 w-44 rounded bg-slate-100" />
                     </td>
-                    <td className="px-6 py-5">
-                      <div className="h-4 w-32 rounded bg-slate-100" />
-                    </td>
+
                     <td className="px-6 py-5">
                       <div className="h-4 w-20 rounded bg-slate-100" />
                     </td>
@@ -820,10 +952,7 @@ export default function BatchesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-5 text-sm font-medium text-slate-600">
-                      {batch.theory_time ?? 0} / {batch.practical_time ?? 0} /{" "}
-                      {batch.viva_time ?? 0}
-                    </td>
+
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-3">
                         <button
@@ -973,56 +1102,30 @@ export default function BatchesPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label="Theory Time">
-                  <input
-                    type="number"
-                    value={form.theory_time}
-                    onChange={(event) =>
-                      setFormField("theory_time", event.target.value)
-                    }
-                    className={INPUT_CLASS}
-                  />
-                </Field>
-                <Field label="Practical Time">
-                  <input
-                    type="number"
-                    value={form.practical_time}
-                    onChange={(event) =>
-                      setFormField("practical_time", event.target.value)
-                    }
-                    className={INPUT_CLASS}
-                  />
-                </Field>
-                <Field label="Viva Time">
-                  <input
-                    type="number"
-                    value={form.viva_time}
-                    onChange={(event) =>
-                      setFormField("viva_time", event.target.value)
-                    }
-                    className={INPUT_CLASS}
-                  />
-                </Field>
               </div>
 
               {form.job_role_id && (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  {jobRoleDetailLoading
-                    ? "Loading NOS and PC details for selected job role..."
-                    : selectedJobRole ? (
-                      <div className="flex flex-wrap items-center gap-4">
-                        <span>{selectedNosList.length} NOS available</span>
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-                          Theory: {Number(selectedJobRole.total_theory_marks) || 0}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                          Practical: {Number(selectedJobRole.total_practical_marks) || 0}
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                          Viva: {Number(selectedJobRole.total_viva_marks) || 0}
-                        </span>
-                      </div>
-                    ) : `Select a job role to load NOS details.`}
+                  {jobRoleDetailLoading ? (
+                    "Loading NOS and PC details for selected job role..."
+                  ) : selectedJobRole ? (
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span>{selectedNosList.length} NOS available</span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                        Theory:{" "}
+                        {Number(selectedJobRole.total_theory_marks) || 0}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                        Practical:{" "}
+                        {Number(selectedJobRole.total_practical_marks) || 0}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                        Viva: {Number(selectedJobRole.total_viva_marks) || 0}
+                      </span>
+                    </div>
+                  ) : (
+                    `Select a job role to load NOS details.`
+                  )}
                 </div>
               )}
 
@@ -1123,31 +1226,37 @@ export default function BatchesPage() {
                                   </span>
                                 )}
                               </p>
-                              {nos.nos_code && (() => {
-                                const matchedNos = selectedNosList.find(
-                                  (jobRoleNos) => getNosCode(jobRoleNos) === nos.nos_code
-                                );
-                                if (!matchedNos) return null;
-                                return (
-                                  <div className="flex items-center gap-1.5">
-                                    {Number(matchedNos.total_theory_marks) > 0 && (
-                                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
-                                        T:{matchedNos.total_theory_marks}
-                                      </span>
-                                    )}
-                                    {Number(matchedNos.total_practical_marks) > 0 && (
-                                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
-                                        P:{matchedNos.total_practical_marks}
-                                      </span>
-                                    )}
-                                    {Number(matchedNos.total_viva_marks) > 0 && (
-                                      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
-                                        V:{matchedNos.total_viva_marks}
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })()}
+                              {nos.nos_code &&
+                                (() => {
+                                  const matchedNos = selectedNosList.find(
+                                    (jobRoleNos) =>
+                                      getNosCode(jobRoleNos) === nos.nos_code
+                                  );
+                                  if (!matchedNos) return null;
+                                  return (
+                                    <div className="flex items-center gap-1.5">
+                                      {Number(matchedNos.total_theory_marks) >
+                                        0 && (
+                                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
+                                          T:{matchedNos.total_theory_marks}
+                                        </span>
+                                      )}
+                                      {Number(
+                                        matchedNos.total_practical_marks
+                                      ) > 0 && (
+                                        <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
+                                          P:{matchedNos.total_practical_marks}
+                                        </span>
+                                      )}
+                                      {Number(matchedNos.total_viva_marks) >
+                                        0 && (
+                                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
+                                          V:{matchedNos.total_viva_marks}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                             </div>
                             <button
                               type="button"
@@ -1642,11 +1751,18 @@ export default function BatchesPage() {
                   ))}
                 </select>
               </Field>
-              <div className={`grid ${bulkJobRoleId ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
+              <div
+                className={`grid ${
+                  bulkJobRoleId ? "grid-cols-2" : "grid-cols-1"
+                } gap-3`}
+              >
                 {bulkJobRoleId && (
                   <button
                     type="button"
-                    onClick={() => selectedJobRole && downloadBatchesTemplate(selectedJobRole)}
+                    onClick={() =>
+                      selectedJobRole &&
+                      downloadBatchesTemplate(selectedJobRole)
+                    }
                     disabled={jobRoleDetailLoading || !selectedJobRole}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
                   >
@@ -1730,31 +1846,347 @@ export default function BatchesPage() {
                 <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
               ) : selectedBatch ? (
                 <div className="space-y-5">
-                  <div>
-                    <p className="text-sm text-slate-500">
-                      #{selectedBatch.id}
-                    </p>
-                    <h3 className="text-2xl font-semibold text-slate-950">
-                      {selectedBatch.name}
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {getBatchJobRoleName(selectedBatch)}
-                    </p>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm text-slate-500">
+                        #{selectedBatch.id}
+                      </p>
+                      <h3 className="text-2xl font-semibold text-slate-950">
+                        {selectedBatch.name}
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {getBatchJobRoleName(selectedBatch)}
+                      </p>
+                    </div>
                   </div>
-                  {/* <div className="grid gap-3 sm:grid-cols-3">
-                    <Stat
-                      label="Theory"
-                      value={selectedBatch.theory_time ?? 0}
-                    />
-                    <Stat
-                      label="Practical"
-                      value={selectedBatch.practical_time ?? 0}
-                    />
-                    <Stat label="Viva" value={selectedBatch.viva_time ?? 0} />
-                  </div> */}
-                  <TestDetailsSection test={selectedBatch.theory_test} type="theory" />
-                  <TestDetailsSection test={selectedBatch.practical_test} type="practical" />
-                  <TestDetailsSection test={selectedBatch.viva_test} type="viva" />
+
+                  <div className="flex border-b border-slate-100 gap-4 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailsTab("structure")}
+                      className={`border-b-2 pb-3 text-sm font-semibold transition ${
+                        detailsTab === "structure"
+                          ? "border-slate-950 text-slate-950"
+                          : "border-transparent text-slate-500 hover:text-slate-950"
+                      }`}
+                    >
+                      Structure & Sections
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsTab("candidates")}
+                      className={`border-b-2 pb-3 text-sm font-semibold transition ${
+                        detailsTab === "candidates"
+                          ? "border-slate-950 text-slate-950"
+                          : "border-transparent text-slate-500 hover:text-slate-950"
+                      }`}
+                    >
+                      Candidates ({batchCandidates.length})
+                    </button>
+                  </div>
+
+                  {detailsTab === "structure" && (
+                    <div className="space-y-5">
+                      <TestDetailsSection
+                        test={selectedBatch.theory_test}
+                        type="theory"
+                      />
+                      <TestDetailsSection
+                        test={selectedBatch.practical_test}
+                        type="practical"
+                      />
+                      <TestDetailsSection
+                        test={selectedBatch.viva_test}
+                        type="viva"
+                      />
+                    </div>
+                  )}
+
+                  {detailsTab === "candidates" && (
+                    <div className="space-y-4">
+                      {isAddingManually ? (
+                        <form
+                          onSubmit={handleManualCandidateSave}
+                          className="space-y-4 rounded-2xl border border-slate-100 p-5 bg-slate-50/50"
+                        >
+                          <h4 className="text-sm font-bold text-slate-900">
+                            Add Candidates Manually
+                          </h4>
+                          <div className="space-y-3">
+                            {manualCandidates.map((cand, idx) => (
+                              <div
+                                key={idx}
+                                className="flex gap-3 items-center"
+                              >
+                                <input
+                                  type="text"
+                                  value={cand.enrollment_no}
+                                  onChange={(e) => {
+                                    const next = [...manualCandidates];
+                                    next[idx].enrollment_no = e.target.value;
+                                    setManualCandidates(next);
+                                  }}
+                                  placeholder="Enrollment No"
+                                  className={INPUT_CLASS}
+                                  required
+                                />
+                                <input
+                                  type="text"
+                                  value={cand.password}
+                                  onChange={(e) => {
+                                    const next = [...manualCandidates];
+                                    next[idx].password = e.target.value;
+                                    setManualCandidates(next);
+                                  }}
+                                  placeholder="Password"
+                                  className={INPUT_CLASS}
+                                  required
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (manualCandidates.length > 1) {
+                                      setManualCandidates(
+                                        manualCandidates.filter(
+                                          (_, i) => i !== idx
+                                        )
+                                      );
+                                    }
+                                  }}
+                                  disabled={manualCandidates.length <= 1}
+                                  className="rounded-xl border border-red-200 p-3 text-red-600 transition hover:bg-red-50 disabled:opacity-40 animate-in fade-in duration-200"
+                                >
+                                  <FiTrash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex justify-between items-center mt-4 pt-2 border-t border-slate-200/60">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setManualCandidates([
+                                  ...manualCandidates,
+                                  { enrollment_no: "", password: "" },
+                                ])
+                              }
+                              className="text-xs font-semibold text-slate-700 hover:text-slate-950 flex items-center gap-1.5 transition"
+                            >
+                              <FiPlus className="h-3.5 w-3.5" /> Add Row
+                            </button>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsAddingManually(false);
+                                  setManualCandidates([
+                                    { enrollment_no: "", password: "" },
+                                  ]);
+                                }}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                disabled={candidatesLoading}
+                                className="rounded-xl bg-slate-950 px-5 py-2 text-xs font-semibold text-white disabled:opacity-50 shadow-md transition hover:opacity-90"
+                              >
+                                {candidatesLoading
+                                  ? "Saving..."
+                                  : "Save Candidates"}
+                              </button>
+                            </div>
+                          </div>
+                        </form>
+                      ) : isUploadingExcel ? (
+                        <div className="space-y-4 rounded-2xl border border-slate-100 p-5 bg-slate-50/50">
+                          <div className="flex justify-between items-center">
+                            <h4 className="text-sm font-bold text-slate-900">
+                              Upload Excel Sheet
+                            </h4>
+                            <button
+                              type="button"
+                              onClick={handleDownloadCandidatesTemplate}
+                              className="text-xs font-semibold text-slate-700 hover:text-slate-950 flex items-center gap-1"
+                            >
+                              <FiDownload className="h-3.5 w-3.5" /> Download
+                              Template
+                            </button>
+                          </div>
+
+                          {!excelFile ? (
+                            <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 bg-white rounded-2xl p-8 cursor-pointer hover:border-slate-400 transition-all duration-300">
+                              <FiUploadCloud className="h-8 w-8 text-slate-400 mb-2" />
+                              <span className="text-xs font-semibold text-slate-700">
+                                Click to upload candidates Excel file
+                              </span>
+                              <span className="text-[10px] text-slate-400 mt-1">
+                                Accepts only .xlsx template files
+                              </span>
+                              <input
+                                type="file"
+                                accept=".xlsx"
+                                onChange={handleExcelCandidatesFileChange}
+                                className="hidden"
+                              />
+                            </label>
+                          ) : (
+                            <div className="space-y-3 animate-in zoom-in-95 duration-200">
+                              <div className="flex items-center justify-between bg-white border border-slate-100 p-3.5 rounded-2xl">
+                                <div className="flex items-center gap-2.5">
+                                  <FiFileText className="h-5 w-5 text-slate-500" />
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-950">
+                                      {excelFile.name}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400">
+                                      Parsed {excelParsedCandidates.length} rows
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setExcelFile(null);
+                                    setExcelParsedCandidates([]);
+                                    setExcelValidationErrors([]);
+                                  }}
+                                  className="text-xs font-semibold text-red-600 hover:underline"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+
+                              {excelValidationErrors.length > 0 && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 max-h-36 overflow-y-auto space-y-1">
+                                  {excelValidationErrors.map((err, idx) => (
+                                    <p
+                                      key={idx}
+                                      className="text-[11px] text-amber-800 flex items-start gap-1"
+                                    >
+                                      <FiAlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
+                                      <span>{err.message}</span>
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="flex justify-end gap-2 mt-4 pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsUploadingExcel(false);
+                                    setExcelFile(null);
+                                    setExcelParsedCandidates([]);
+                                    setExcelValidationErrors([]);
+                                  }}
+                                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveExcelCandidates}
+                                  disabled={
+                                    candidatesLoading ||
+                                    excelValidationErrors.some(
+                                      (e) => e.type === "error"
+                                    ) ||
+                                    excelParsedCandidates.length === 0
+                                  }
+                                  className="rounded-xl bg-slate-950 px-5 py-2 text-xs font-semibold text-white disabled:opacity-50 transition hover:opacity-90"
+                                >
+                                  {candidatesLoading
+                                    ? "Saving..."
+                                    : "Save Candidates"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                          <div className="flex justify-between items-center gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Registered Candidates
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingManually(true)}
+                                className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-350 transition"
+                              >
+                                Add Candidate
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsUploadingExcel(true)}
+                                className="rounded-xl bg-slate-950 px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 transition"
+                              >
+                                Upload Excel
+                              </button>
+                            </div>
+                          </div>
+
+                          {candidatesLoading && batchCandidates.length === 0 ? (
+                            <div className="h-32 animate-pulse rounded-2xl bg-slate-100 flex items-center justify-center text-xs text-slate-400">
+                              Loading candidates...
+                            </div>
+                          ) : batchCandidates.length > 0 ? (
+                            <div className="overflow-hidden rounded-2xl border border-slate-150 shadow-sm">
+                              <table className="w-full text-left">
+                                <thead className="bg-slate-50/70 border-b border-slate-150">
+                                  <tr>
+                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                      ID
+                                    </th>
+                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                      Enrollment No
+                                    </th>
+                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                      Password
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                  {batchCandidates.map((cand, idx) => (
+                                    <tr
+                                      key={cand.id || idx}
+                                      className="hover:bg-slate-50/50 transition-colors"
+                                    >
+                                      <td className="px-5 py-3 text-xs font-medium text-slate-400">
+                                        {idx + 1}
+                                      </td>
+                                      <td className="px-5 py-3 text-xs font-semibold text-slate-900">
+                                        {cand.enrollment_no}
+                                      </td>
+                                      <td className="px-5 py-3 text-xs text-slate-600">
+                                        <code className="bg-slate-50 rounded px-2 py-0.5 font-mono text-[11px] border border-slate-100">
+                                          {cand.password}
+                                        </code>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center">
+                              <FiUsers className="h-7 w-7 text-slate-400 mx-auto mb-2" />
+                              <h5 className="text-sm font-bold text-slate-950">
+                                No Candidates Registered
+                              </h5>
+                              <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                                Click Add Candidate or Upload Excel to register
+                                candidates for this batch.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">No batch selected.</p>
@@ -1855,7 +2287,10 @@ function TestDetailsSection({ test, type }: { test: any; type: string }) {
             </h5>
             <div className="space-y-3">
               {(sec.questions || []).map((q: any, qIdx: number) => {
-                const metadata = q.metadata && typeof q.metadata !== "string" ? q.metadata : null;
+                const metadata =
+                  q.metadata && typeof q.metadata !== "string"
+                    ? q.metadata
+                    : null;
                 return (
                   <div
                     key={q.id || qIdx}
@@ -1873,7 +2308,10 @@ function TestDetailsSection({ test, type }: { test: any; type: string }) {
                       </div>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <span className="inline-flex items-center rounded-md bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 ring-1 ring-inset ring-slate-500/10 uppercase tracking-wide">
-                          {q.nos?.code || q.nos?.nos_code || q.nos_code || "NOS"}
+                          {q.nos?.code ||
+                            q.nos?.nos_code ||
+                            q.nos_code ||
+                            "NOS"}
                         </span>
                         <span className="text-[10px] font-bold text-slate-800">
                           {q.correct_mark ? `+${q.correct_mark}` : "0"} Marks
@@ -1892,8 +2330,12 @@ function TestDetailsSection({ test, type }: { test: any; type: string }) {
                                 : "border-slate-100 bg-slate-50/50 text-slate-600"
                             }`}
                           >
-                            <span className="mr-1.5 opacity-60">{String.fromCharCode(65 + optIdx)}.</span>
-                            <span dangerouslySetInnerHTML={{ __html: opt.text }} />
+                            <span className="mr-1.5 opacity-60">
+                              {String.fromCharCode(65 + optIdx)}.
+                            </span>
+                            <span
+                              dangerouslySetInnerHTML={{ __html: opt.text }}
+                            />
                           </div>
                         ))}
                       </div>

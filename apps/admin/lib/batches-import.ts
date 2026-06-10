@@ -33,11 +33,7 @@ const BATCH_HEADERS = [
   "VIVA TIME",
 ] as const;
 
-const SECTION_HEADERS = [
-  "BATCH NAME",
-  "SECTION NAME",
-  "TYPE",
-] as const;
+const SECTION_HEADERS = ["BATCH NAME", "SECTION NAME", "TYPE"] as const;
 
 const NOS_HEADERS = [
   "SECTION NAME",
@@ -81,7 +77,11 @@ function numberValue(value: unknown) {
 
 function parseSectionType(value: unknown): BatchSectionType | null {
   const normalized = stringValue(value).toLowerCase();
-  if (normalized === "theory" || normalized === "practical" || normalized === "viva") {
+  if (
+    normalized === "theory" ||
+    normalized === "practical" ||
+    normalized === "viva"
+  ) {
     return normalized;
   }
   return null;
@@ -89,7 +89,11 @@ function parseSectionType(value: unknown): BatchSectionType | null {
 
 function parseDifficulty(value: unknown): BatchDifficultyLevel | null {
   const normalized = stringValue(value).toLowerCase();
-  if (normalized === "easy" || normalized === "medium" || normalized === "hard") {
+  if (
+    normalized === "easy" ||
+    normalized === "medium" ||
+    normalized === "hard"
+  ) {
     return normalized;
   }
   return null;
@@ -124,23 +128,36 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
       "TOTAL PRACTICAL MARKS": numberValue(jobRole.total_practical_marks),
       "TOTAL VIVA MARKS": numberValue(jobRole.total_viva_marks),
       "THEORY TIME": 30,
-      "PRACTICAL TIME": 30,
-      "VIVA TIME": 30,
+      "PRACTICAL TIME": jobRole.total_practical_marks > 0 ? 30 : 0,
+      "VIVA TIME": jobRole.total_viva_marks > 0 ? 30 : 0,
     },
   ];
 
   const sections = [
     {
       "BATCH NAME": batchName,
-      "SECTION NAME": "Section 1",
-      "TYPE": "theory",
+      "SECTION NAME": "Theory Section",
+      TYPE: "theory",
     },
-    
   ];
 
-  const nosList: any[] = [];
-  // const pcList: any[] = [];
+  if (jobRole.total_practical_marks > 0) {
+    sections.push({
+      "BATCH NAME": batchName,
+      "SECTION NAME": "Practical Section",
+      TYPE: "practical",
+    });
+  }
 
+  if (jobRole.total_viva_marks > 0) {
+    sections.push({
+      "BATCH NAME": batchName,
+      "SECTION NAME": "Viva Section",
+      TYPE: "viva",
+    });
+  }
+
+  const nosList: any[] = [];
   const jobRoleNosList = jobRole.nos_list || [];
 
   for (const nos of jobRoleNosList) {
@@ -156,33 +173,17 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
         "NOS MAX VIVA MARKS": numberValue(nos.total_viva_marks),
         "TOPIC ID": "",
         "QUESTION COUNT": 1,
-        "DIFFICULTY": "easy",
+        DIFFICULTY: "easy",
         "QUESTION TYPE": section["TYPE"] === "practical" ? "rubric" : "mcq",
         "CORRECT MARK": 0,
         "NEGATIVE MARK": 0,
       });
     }
-
-    // const jobRolePcList = nos.pc_list || [];
-    // for (const pc of jobRolePcList) {
-    //   const pcCode = pc.code || pc.pc_code || "";
-    //   pcList.push({
-    //     "NOS CODE": nosCode,
-    //     "PC NAME": pc.name || "",
-    //     "PC CODE": pcCode,
-    //     "TOPIC ID": "",
-    //     "QUESTION COUNT": 1,
-    //     "DIFFICULTY": "easy",
-    //     "QUESTION TYPE": "mcq",
-    //     "CORRECT MARK": 0,
-    //     "NEGATIVE MARK": 0,
-    //   });
-    // }
   }
 
   if (nosList.length === 0) {
     nosList.push({
-      "SECTION NAME": "Section 1",
+      "SECTION NAME": "Theory Section",
       "NOS NAME": "",
       "NOS CODE": "NOS-001",
       "NOS MAX THEORY MARKS": 0,
@@ -190,26 +191,12 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
       "NOS MAX VIVA MARKS": 0,
       "TOPIC ID": "",
       "QUESTION COUNT": 1,
-      "DIFFICULTY": "easy",
+      DIFFICULTY: "easy",
       "QUESTION TYPE": "mcq",
       "CORRECT MARK": 0,
       "NEGATIVE MARK": 0,
     });
   }
-
-  // if (pcList.length === 0) {
-  //   pcList.push({
-  //     "NOS CODE": "NOS-001",
-  //     "PC NAME": "",
-  //     "PC CODE": "PC-001",
-  //     "TOPIC ID": "",
-  //     "QUESTION COUNT": 1,
-  //     "DIFFICULTY": "easy",
-  //     "QUESTION TYPE": "mcq",
-  //     "CORRECT MARK": 0,
-  //     "NEGATIVE MARK": 0,
-  //   });
-  // }
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
@@ -227,11 +214,6 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
     buildSheet(nosList, NOS_HEADERS),
     NOS_SHEET
   );
-  // XLSX.utils.book_append_sheet(
-  //   workbook,
-  //   buildSheet(pcList, PC_HEADERS),
-  //   PCS_SHEET
-  // );
   XLSX.writeFile(workbook, "batches_template.xlsx", { bookType: "xlsx" });
 }
 
@@ -309,7 +291,10 @@ export function parseBatchesExcelFile(
   //   pcsByNosCode.set(nosCode, [...(pcsByNosCode.get(nosCode) || []), pc]);
   // });
 
-  const nosBySectionName = new Map<string, BatchPayload["sections"][number]["nos_list"]>();
+  const nosBySectionName = new Map<
+    string,
+    BatchPayload["sections"][number]["nos_list"]
+  >();
   nosRows.forEach((row, rowIndex) => {
     const prefix = `${NOS_SHEET} row ${rowIndex + 2}`;
     const sectionName = stringValue(row["SECTION NAME"]);
@@ -409,13 +394,16 @@ export function parseBatchesExcelFile(
         message: `${prefix}: no sections found for BATCH NAME "${name}".`,
       });
     }
+    const theoryTime = numberValue(row["THEORY TIME"]);
+    const practicalTime = numberValue(row["PRACTICAL TIME"]);
+    const vivaTime = numberValue(row["VIVA TIME"]);
 
     result.push({
       name,
       job_role_id: options.jobRoleId ?? 0,
-      theory_time: numberValue(row["THEORY TIME"]),
-      practical_time: numberValue(row["PRACTICAL TIME"]),
-      viva_time: numberValue(row["VIVA TIME"]),
+      theory_time: theoryTime,
+      practical_time: practicalTime,
+      viva_time: vivaTime,
       sections,
     });
 
