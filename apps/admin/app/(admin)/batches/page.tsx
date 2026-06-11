@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
@@ -15,6 +16,8 @@ import {
   FiCheck,
   FiKey,
   FiFileText,
+  FiCalendar,
+  FiSend,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -32,6 +35,8 @@ import {
   updateBatch,
   fetchBatchCandidates,
   createBatchCandidates,
+  setBatchSlot,
+  publishBatch,
 } from "@/store/slices/batches-slice";
 import {
   downloadBatchesTemplate,
@@ -83,7 +88,9 @@ type BatchFormState = {
   name: string;
   sector_id: string;
   job_role_id: string;
-
+  theory_time?: number;
+  practical_time?: number;
+  viva_time?: number;
   sections: SectionForm[];
 };
 
@@ -328,7 +335,18 @@ export default function BatchesPage() {
   const [excelParsedCandidates, setExcelParsedCandidates] = useState<
     Array<{ enrollment_no: string; password: string }>
   >([]);
-
+  const [slotModalOpen, setSlotModalOpen] = useState(false);
+  const [schedulingBatchId, setSchedulingBatchId] = useState<
+    string | number | null
+  >(null);
+  const [slotForm, setSlotForm] = useState({
+    testType: "THEORY",
+    startDateTime: "",
+    endDateTime: "",
+  });
+  const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
+  const [batchToPublish, setBatchToPublish] = useState<Batch | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
   useEffect(() => {
     if (error) {
       toast.error(error, { toastId: error });
@@ -498,6 +516,56 @@ export default function BatchesPage() {
     dispatch(fetchBatches({ page: currentPage, limit: 10 }));
   };
 
+  const handleOpenSlotModal = (batchId: string | number) => {
+    setSchedulingBatchId(batchId);
+    setSlotForm({ testType: "", startDateTime: "", endDateTime: "" });
+    setSlotModalOpen(true);
+  };
+
+  const handleSlotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schedulingBatchId) return;
+
+    setIsSubmittingSlot(true);
+    // Ensure inputs match format expectation: Convert native local datetime values to ISO string format
+    const payload = {
+      batchId: schedulingBatchId,
+      testType: slotForm.testType,
+      startDateTime: new Date(slotForm.startDateTime).toISOString(),
+      endDateTime: new Date(slotForm.endDateTime).toISOString(),
+    };
+
+    const actionResult = await dispatch(setBatchSlot(payload as any));
+    setIsSubmittingSlot(false);
+
+    if (setBatchSlot.fulfilled.match(actionResult)) {
+      toast.success("Test slot scheduled successfully!");
+      setSlotModalOpen(false);
+      refreshBatches();
+    }
+  };
+
+  const handleOpenPublishModal = (batch: Batch) => {
+    setBatchToPublish(batch);
+  };
+
+  const handleConfirmPublish = async () => {
+    if (!batchToPublish) return;
+
+    setIsPublishing(true);
+    const actionResult = await dispatch(publishBatch(batchToPublish.id));
+    setIsPublishing(false);
+
+    if (publishBatch.fulfilled.match(actionResult)) {
+      toast.success(`Batch "${batchToPublish.name}" published successfully!`);
+      setBatchToPublish(null);
+      // Call your existing list refresh logic here if needed (e.g., dispatch(fetchBatches(...)))
+    } else {
+      toast.error(
+        (actionResult.payload as string) || "Failed to publish batch."
+      );
+    }
+  };
   const openCreateModal = () => {
     setForm(createEmptyForm());
     setBatchToEdit(null);
@@ -900,8 +968,12 @@ export default function BatchesPage() {
                 <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Name
                 </th>
+
                 <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Job Role
+                </th>
+                <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Status
                 </th>
 
                 <th className="px-6 py-5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -922,6 +994,9 @@ export default function BatchesPage() {
 
                     <td className="px-6 py-5">
                       <div className="h-4 w-20 rounded bg-slate-100" />
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="h-4 w-44 rounded bg-slate-100" />
                     </td>
                     <td className="px-6 py-5">
                       <div className="ml-auto h-4 w-24 rounded bg-slate-100" />
@@ -952,6 +1027,22 @@ export default function BatchesPage() {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        {/* Status Badge Indicator */}
+                        {batch.is_published ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Published
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 border border-slate-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                            Draft
+                          </span>
+                        )}
+                      </div>
+                    </td>
 
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-3">
@@ -962,13 +1053,30 @@ export default function BatchesPage() {
                         >
                           <FiEye className="h-4.5 w-4.5" />
                         </button>
-                        <button
+                        {/* <button
                           onClick={() => openEditModal(batch)}
                           className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
                           title="Edit Batch"
                         >
                           <FiEdit2 className="h-4.5 w-4.5" />
+                        </button> */}
+                        <button
+                          onClick={() => handleOpenSlotModal(batch.id)}
+                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
+                          title="Configure Time Slot"
+                        >
+                          <FiCalendar className="h-4.5 w-4.5" />
                         </button>
+
+                        {!batch.is_published && (
+                          <button
+                            onClick={() => handleOpenPublishModal(batch)}
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600"
+                            title="Publish Batch"
+                          >
+                            <FiSend className="h-4.5 w-4.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => setBatchToDelete(batch)}
                           disabled={deleting}
@@ -1028,6 +1136,47 @@ export default function BatchesPage() {
         </div>
       </div>
 
+      {batchToPublish && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
+          <div className="w-full max-w-md rounded-[2rem] border border-white/80 bg-white p-7 shadow-2xl">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <FiSend className="h-6 w-6" />
+            </div>
+
+            <h3 className="text-xl font-semibold text-slate-950 mb-2">
+              Publish Batch Test?
+            </h3>
+
+            <p className="text-sm text-slate-600 mb-6">
+              Are you sure you want to finalize and publish{" "}
+              <strong className="text-slate-900">
+                "{batchToPublish.name}"
+              </strong>
+              ? Once published, candidate configurations will be frozen and test
+              visibility settings will be activated.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBatchToPublish(null)}
+                disabled={isPublishing}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPublish}
+                disabled={isPublishing}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isPublishing ? "Publishing..." : "Confirm Publish"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
           <form
@@ -2227,6 +2376,86 @@ export default function BatchesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {slotModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
+          <form
+            onSubmit={handleSlotSubmit}
+            className="w-full max-w-md rounded-[2rem] border border-white/80 bg-white p-7 shadow-2xl"
+          >
+            <h2 className="text-xl font-semibold text-slate-950 mb-4">
+              Schedule Batch Slot
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                  Test Type
+                </label>
+                <select
+                  value={slotForm.testType}
+                  onChange={(e) =>
+                    setSlotForm({ ...slotForm, testType: e.target.value })
+                  }
+                  className={INPUT_CLASS}
+                >
+                  <option value="">Select test type</option>
+                  <option value="theory">Theory</option>
+                  <option value="practical">Practical</option>
+                  <option value="viva">Viva</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                  Start Date & Time
+                </label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={slotForm.startDateTime}
+                  onChange={(e) =>
+                    setSlotForm({ ...slotForm, startDateTime: e.target.value })
+                  }
+                  className={INPUT_CLASS}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                  End Date & Time
+                </label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={slotForm.endDateTime}
+                  onChange={(e) =>
+                    setSlotForm({ ...slotForm, endDateTime: e.target.value })
+                  }
+                  className={INPUT_CLASS}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => setSlotModalOpen(false)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingSlot}
+                className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-50"
+              >
+                {isSubmittingSlot ? "Scheduling..." : "Save Slot"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </section>

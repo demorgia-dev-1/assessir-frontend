@@ -17,7 +17,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   fetchCandidates,
   createCandidates,
-  deleteCandidateFromBatch,
+  deleteCandidatesFromBatch,
   clearCandidatesError,
   clearCandidates,
   setSelectedBatchId,
@@ -59,7 +59,10 @@ export default function CandidatesPage() {
   const [excelParsedCandidates, setExcelParsedCandidates] = useState<
     Array<{ enrollment_no: string; password: string }>
   >([]);
-  const [candidateToDelete, setCandidateToDelete] = useState<any | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
+    new Set()
+  );
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 1000 }));
@@ -82,6 +85,7 @@ export default function CandidatesPage() {
     setExcelFile(null);
     setExcelParsedCandidates([]);
     setExcelValidationErrors([]);
+    setSelectedIds(new Set());
   };
 
   const handleSelectBatch = (batchId: string) => {
@@ -184,19 +188,40 @@ export default function CandidatesPage() {
     }
   };
 
+  const toggleSelect = (id: string | number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === candidates.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(candidates.map((c) => c.id!)));
+    }
+  };
+
   const handleConfirmDelete = async () => {
-    if (!candidateToDelete || !selectedBatchId) return;
+    if (!selectedBatchId || selectedIds.size === 0) return;
 
     const actionResult = await dispatch(
-      deleteCandidateFromBatch({
+      deleteCandidatesFromBatch({
         batchId: selectedBatchId,
-        candidateId: candidateToDelete.id,
+        candidateIds: Array.from(selectedIds),
       })
     );
 
-    if (deleteCandidateFromBatch.fulfilled.match(actionResult)) {
-      toast.success("Candidate removed successfully.");
-      setCandidateToDelete(null);
+    if (deleteCandidatesFromBatch.fulfilled.match(actionResult)) {
+      toast.success(
+        `${selectedIds.size} candidate${
+          selectedIds.size > 1 ? "s" : ""
+        } removed successfully.`
+      );
+      setSelectedIds(new Set());
+      setShowDeleteModal(false);
     }
   };
 
@@ -330,9 +355,36 @@ export default function CandidatesPage() {
               </div>
             ) : candidates.length > 0 ? (
               <div className="overflow-hidden rounded-2xl border border-slate-150 shadow-sm">
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center justify-between border-b border-red-100 bg-red-50/70 px-5 py-2.5">
+                    <span className="text-xs font-semibold text-red-700">
+                      {selectedIds.size} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteModal(true)}
+                      disabled={deleting}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+                    >
+                      <FiTrash2 className="h-3.5 w-3.5" />
+                      Delete Selected
+                    </button>
+                  </div>
+                )}
                 <table className="w-full text-left">
                   <thead className="border-b border-slate-150 bg-slate-50/70">
                     <tr>
+                      <th className="px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={
+                            candidates.length > 0 &&
+                            selectedIds.size === candidates.length
+                          }
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 rounded border-slate-300 accent-slate-950 cursor-pointer"
+                        />
+                      </th>
                       <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                         #
                       </th>
@@ -342,41 +394,42 @@ export default function CandidatesPage() {
                       <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                         Password
                       </th>
-                      <th className="px-5 py-3.5 text-right text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {candidates.map((cand, idx) => (
-                      <tr
-                        key={cand.id || idx}
-                        className="transition-colors hover:bg-slate-50/50"
-                      >
-                        <td className="px-5 py-3 text-xs font-medium text-slate-400">
-                          {idx + 1}
-                        </td>
-                        <td className="px-5 py-3 text-xs font-semibold text-slate-900">
-                          {cand.enrollment_no}
-                        </td>
-                        <td className="px-5 py-3 text-xs text-slate-600">
-                          <code className="rounded border border-slate-100 bg-slate-50 px-2 py-0.5 font-mono text-[11px]">
-                            {cand.password}
-                          </code>
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setCandidateToDelete(cand)}
-                            disabled={deleting}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Remove candidate"
-                          >
-                            <FiTrash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {candidates.map((cand, idx) => {
+                      const isChecked = selectedIds.has(cand.id!);
+                      return (
+                        <tr
+                          key={cand.id || idx}
+                          onClick={() => toggleSelect(cand.id!)}
+                          className={`cursor-pointer transition-colors hover:bg-slate-50/50 ${
+                            isChecked ? "bg-red-50/40" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleSelect(cand.id!)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-4 w-4 rounded border-slate-300 accent-slate-950 cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-5 py-3 text-xs font-medium text-slate-400">
+                            {idx + 1}
+                          </td>
+                          <td className="px-5 py-3 text-xs font-semibold text-slate-900">
+                            {cand.enrollment_no}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-slate-600">
+                            <code className="rounded border border-slate-100 bg-slate-50 px-2 py-0.5 font-mono text-[11px]">
+                              {cand.password}
+                            </code>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -704,8 +757,8 @@ export default function CandidatesPage() {
         </div>
       </div>
 
-      {/* Delete confirmation modal */}
-      {candidateToDelete && (
+      {/* Bulk delete confirmation modal */}
+      {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay animate-in fade-in duration-200">
           <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3">
@@ -714,7 +767,7 @@ export default function CandidatesPage() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-slate-950">
-                  Remove Candidate
+                  Remove Candidates
                 </h2>
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
                   Action is Permanent
@@ -724,14 +777,14 @@ export default function CandidatesPage() {
             <p className="mt-4 text-sm leading-6 text-slate-600">
               Are you sure you want to remove{" "}
               <span className="font-semibold text-slate-950">
-                &quot;{candidateToDelete.enrollment_no}&quot;
+                {selectedIds.size} candidate{selectedIds.size > 1 ? "s" : ""}
               </span>{" "}
               from this batch?
             </p>
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
-                onClick={() => setCandidateToDelete(null)}
+                onClick={() => setShowDeleteModal(false)}
                 className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
                 disabled={deleting}
               >
@@ -743,7 +796,13 @@ export default function CandidatesPage() {
                 className="flex-1 rounded-2xl bg-red-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50 active:scale-[0.98]"
                 disabled={deleting}
               >
-                {deleting ? "Removing…" : "Remove Candidate"}
+                {deleting
+                  ? "Removing…"
+                  : `Remove ${
+                      selectedIds.size > 1
+                        ? `${selectedIds.size} Candidates`
+                        : "Candidate"
+                    }`}
               </button>
             </div>
           </div>

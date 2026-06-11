@@ -15,9 +15,9 @@ export type CreateCandidatesInput = {
   candidates: Array<{ enrollment_no: string; password: string }>;
 };
 
-export type DeleteCandidateInput = {
+export type DeleteCandidatesInput = {
   batchId: string | number;
-  candidateId: string | number;
+  candidateIds: Array<string | number>;
 };
 
 interface CandidatesState {
@@ -114,18 +114,20 @@ export const createCandidates = createAsyncThunk(
   }
 );
 
-export const deleteCandidateFromBatch = createAsyncThunk(
-  "candidates/deleteCandidate",
+export const deleteCandidatesFromBatch = createAsyncThunk(
+  "candidates/deleteCandidates",
   async (
-    { batchId, candidateId }: DeleteCandidateInput,
+    { batchId, candidateIds }: DeleteCandidatesInput,
     { rejectWithValue }
   ) => {
     try {
-      await api.delete(`/batches/${batchId}/candidates/${candidateId}`);
-      return candidateId;
+      await api.delete(`/batches/${batchId}/candidates`, {
+        data: { candidate_ids: candidateIds },
+      });
+      return candidateIds;
     } catch (error: any) {
       return rejectWithValue(
-        getErrorMessage(error, "Failed to delete candidate")
+        getErrorMessage(error, "Failed to delete candidates")
       );
     }
   }
@@ -195,22 +197,23 @@ const candidatesSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // deleteCandidateFromBatch
-      .addCase(deleteCandidateFromBatch.pending, (state) => {
+      // deleteCandidatesFromBatch
+      .addCase(deleteCandidatesFromBatch.pending, (state) => {
         state.deleting = true;
         state.error = null;
       })
       .addCase(
-        deleteCandidateFromBatch.fulfilled,
-        (state, action: PayloadAction<string | number>) => {
+        deleteCandidatesFromBatch.fulfilled,
+        (state, action: PayloadAction<Array<string | number>>) => {
           state.deleting = false;
+          const deletedSet = new Set(action.payload.map(String));
           state.candidates = state.candidates.filter(
-            (c) => c.id !== action.payload
+            (c) => !deletedSet.has(String(c.id))
           );
-          state.totalCandidates = Math.max(0, state.totalCandidates - 1);
+          state.totalCandidates = state.candidates.length;
         }
       )
-      .addCase(deleteCandidateFromBatch.rejected, (state, action) => {
+      .addCase(deleteCandidatesFromBatch.rejected, (state, action) => {
         state.deleting = false;
         state.error = action.payload as string;
       });
@@ -219,4 +222,5 @@ const candidatesSlice = createSlice({
 
 export const { clearCandidatesError, clearCandidates, setSelectedBatchId } =
   candidatesSlice.actions;
+
 export default candidatesSlice.reducer;

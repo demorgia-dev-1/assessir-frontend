@@ -46,9 +46,7 @@ export type BatchPayload = {
   name: string;
   job_role_id: number;
   theory_time: number;
-
   practical_time: number;
-
   viva_time: number;
   sections: BatchSectionPayload[];
 };
@@ -75,6 +73,13 @@ export type GetBatchesParams = {
   limit?: number;
   name?: string;
   job_role_id?: string | number;
+};
+
+export type SetSlotInput = {
+  batchId: string | number;
+  testType: "THEORY" | "PRACTICAL" | "VIVA";
+  startDateTime: string; // ISO format string (e.g., "2026-06-15T10:00:00Z")
+  endDateTime: string; // ISO format string (e.g., "2026-06-15T10:30:00Z")
 };
 
 type BatchApiShape = Partial<Batch> & {
@@ -218,11 +223,36 @@ function normalizeBatch(batch: BatchApiShape): Batch {
     job_role_id: Number(
       batch.job_role_id ?? batch.jobrole_id ?? batch.jobRoleID ?? 0
     ),
-
     sections,
     jobRole: batch.jobRole ?? batch.job_role ?? batch.jobrole ?? null,
   };
 }
+
+export const setBatchSlot = createAsyncThunk(
+  "batches/setBatchSlot",
+  async ({ batchId, ...payload }: SetSlotInput, { rejectWithValue }) => {
+    try {
+      const response = await api.patch(`/batches/${batchId}/set-slot`, payload);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        getErrorMessage(error, "Failed to set slot configuration")
+      );
+    }
+  }
+);
+
+export const publishBatch = createAsyncThunk(
+  "batches/publishBatch",
+  async (batchId: string | number, { rejectWithValue }) => {
+    try {
+      const response = await api.patch(`/batches/${batchId}/publish`);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(getErrorMessage(error, "Failed to publish batch"));
+    }
+  }
+);
 
 export const fetchBatches = createAsyncThunk(
   "batches/fetchBatches",
@@ -499,6 +529,60 @@ const batchesSlice = createSlice({
       .addCase(createBatchCandidates.rejected, (state, action) => {
         state.candidatesLoading = false;
         state.candidatesError = action.payload as string;
+      })
+      // Handle setBatchSlot status updates
+      .addCase(setBatchSlot.pending, (state) => {
+        state.updating = true;
+        state.error = null;
+      })
+      .addCase(
+        setBatchSlot.fulfilled,
+        (state, action: PayloadAction<BatchApiShape>) => {
+          state.updating = false;
+          if (action.payload && action.payload.id) {
+            const updatedBatch = normalizeBatch(action.payload);
+            const index = state.batches.findIndex(
+              (batch) => batch.id === updatedBatch.id
+            );
+            if (index !== -1) {
+              state.batches[index] = updatedBatch;
+            }
+            if (state.selectedBatch?.id === updatedBatch.id) {
+              state.selectedBatch = updatedBatch;
+            }
+          }
+        }
+      )
+      .addCase(setBatchSlot.rejected, (state, action) => {
+        state.updating = false;
+        state.error = action.payload as string;
+      })
+      // Handle publishBatch status updates
+      .addCase(publishBatch.pending, (state) => {
+        state.updating = true;
+        state.error = null;
+      })
+      .addCase(
+        publishBatch.fulfilled,
+        (state, action: PayloadAction<BatchApiShape>) => {
+          state.updating = false;
+          if (action.payload && action.payload.id) {
+            const updatedBatch = normalizeBatch(action.payload);
+            const index = state.batches.findIndex(
+              (batch) => batch.id === updatedBatch.id
+            );
+            if (index !== -1) {
+              state.batches[index] = updatedBatch;
+            }
+            if (state.selectedBatch?.id === updatedBatch.id) {
+              state.selectedBatch = updatedBatch;
+            }
+          }
+        }
+      )
+      .addCase(publishBatch.rejected, (state, action) => {
+        state.updating = false;
+        state.error = action.payload as string;
       });
   },
 });
