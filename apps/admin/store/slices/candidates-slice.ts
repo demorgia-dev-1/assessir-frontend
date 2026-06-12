@@ -1,4 +1,5 @@
 import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { toast } from "react-toastify";
 import api from "@/lib/api";
 
 export type Candidate = {
@@ -88,9 +89,9 @@ export const fetchCandidates = createAsyncThunk(
       const response = await api.get(`/batches/${batchId}/candidates`);
       return { batchId, data: response.data };
     } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to fetch candidates")
-      );
+      const message = getErrorMessage(error, "Failed to fetch candidates");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -105,11 +106,12 @@ export const createCandidates = createAsyncThunk(
       const response = await api.post(`/batches/${batchId}/candidates`, {
         candidates,
       });
+      toast.success("Candidates added successfully.");
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to create candidates")
-      );
+      const message = getErrorMessage(error, "Failed to create candidates");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -124,11 +126,12 @@ export const deleteCandidatesFromBatch = createAsyncThunk(
       await api.delete(`/batches/${batchId}/candidates`, {
         data: { candidate_ids: candidateIds },
       });
+      toast.success("Candidates deleted successfully.");
       return candidateIds;
     } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to delete candidates")
-      );
+      const message = getErrorMessage(error, "Failed to delete candidates");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );

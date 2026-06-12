@@ -2,7 +2,8 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import { toast } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import {
   FiDownload,
   FiEdit2,
@@ -18,6 +19,9 @@ import {
   FiFileText,
   FiCalendar,
   FiSend,
+  FiExternalLink,
+  FiShare2,
+  FiCopy,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -33,11 +37,14 @@ import {
   fetchBatchById,
   fetchBatches,
   updateBatch,
-  fetchBatchCandidates,
-  createBatchCandidates,
   setBatchSlot,
   publishBatch,
 } from "@/store/slices/batches-slice";
+import {
+  fetchCandidates,
+  createCandidates,
+  clearCandidates,
+} from "@/store/slices/candidates-slice";
 import {
   downloadBatchesTemplate,
   parseBatchesExcelFile,
@@ -91,6 +98,9 @@ type BatchFormState = {
   theory_time?: number;
   practical_time?: number;
   viva_time?: number;
+  is_authorization_required_in_theory: boolean;
+  is_authorization_required_in_practical: boolean;
+  is_authorization_required_in_viva: boolean;
   sections: SectionForm[];
 };
 
@@ -141,7 +151,9 @@ function createEmptyForm(): BatchFormState {
     name: "",
     sector_id: "",
     job_role_id: "",
-
+    is_authorization_required_in_theory: false,
+    is_authorization_required_in_practical: false,
+    is_authorization_required_in_viva: false,
     sections: SECTION_TYPES.map(createSection),
   };
 }
@@ -194,7 +206,15 @@ function normalizeBatchToForm(batch: Batch): BatchFormState {
         ""
     ),
     job_role_id: String(batch.job_role_id || ""),
-
+    theory_time: batch.theory_time ?? 0,
+    practical_time: batch.practical_time ?? 0,
+    viva_time: batch.viva_time ?? 0,
+    is_authorization_required_in_theory:
+      batch.is_authorization_required_in_theory ?? false,
+    is_authorization_required_in_practical:
+      batch.is_authorization_required_in_practical ?? false,
+    is_authorization_required_in_viva:
+      batch.is_authorization_required_in_viva ?? false,
     sections: batch.sections?.length
       ? batch.sections.map((section) => ({
           name: section.name,
@@ -272,9 +292,14 @@ function buildPayload(form: BatchFormState): BatchPayload | null {
   return {
     name: form.name.trim(),
     job_role_id: Number(form.job_role_id),
-    theory_time: 0, // Provide default or calculated value
-    practical_time: 0, // Provide default or calculated value
-    viva_time: 0, // Provide default or calculated value
+    theory_time: form.theory_time ?? 0,
+    practical_time: form.practical_time ?? 0,
+    viva_time: form.viva_time ?? 0,
+    is_authorization_required_in_theory:
+      form.is_authorization_required_in_theory,
+    is_authorization_required_in_practical:
+      form.is_authorization_required_in_practical,
+    is_authorization_required_in_viva: form.is_authorization_required_in_viva,
     sections,
   };
 }
@@ -294,11 +319,13 @@ export default function BatchesPage() {
     deleting,
     viewLoading,
     selectedBatch,
-    batchCandidates,
-    candidatesLoading,
-    candidatesError,
     error,
   } = useAppSelector((state) => state.batches);
+  const {
+    candidates: batchCandidates,
+    loading: candidatesLoading,
+    error: candidatesError,
+  } = useAppSelector((state) => state.candidates);
   const { sectors } = useAppSelector((state) => state.sectors);
   const {
     jobRoles,
@@ -347,12 +374,6 @@ export default function BatchesPage() {
   const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
   const [batchToPublish, setBatchToPublish] = useState<Batch | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
-  useEffect(() => {
-    if (error) {
-      toast.error(error, { toastId: error });
-      dispatch(clearBatchError());
-    }
-  }, [error, dispatch]);
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 10 }));
@@ -539,7 +560,6 @@ export default function BatchesPage() {
     setIsSubmittingSlot(false);
 
     if (setBatchSlot.fulfilled.match(actionResult)) {
-      toast.success("Test slot scheduled successfully!");
       setSlotModalOpen(false);
       refreshBatches();
     }
@@ -557,13 +577,8 @@ export default function BatchesPage() {
     setIsPublishing(false);
 
     if (publishBatch.fulfilled.match(actionResult)) {
-      toast.success(`Batch "${batchToPublish.name}" published successfully!`);
       setBatchToPublish(null);
-      // Call your existing list refresh logic here if needed (e.g., dispatch(fetchBatches(...)))
-    } else {
-      toast.error(
-        (actionResult.payload as string) || "Failed to publish batch."
-      );
+      refreshBatches();
     }
   };
   const openCreateModal = () => {
@@ -729,11 +744,6 @@ export default function BatchesPage() {
       (modalMode === "edit" && updateBatch.fulfilled.match(resultAction)) ||
       (modalMode === "create" && createBatches.fulfilled.match(resultAction))
     ) {
-      toast.success(
-        modalMode === "edit"
-          ? "Batch updated successfully."
-          : "Batch created successfully."
-      );
       closeFormModal();
       refreshBatches();
     }
@@ -749,7 +759,7 @@ export default function BatchesPage() {
     setExcelValidationErrors([]);
     setExcelParsedCandidates([]);
     dispatch(fetchBatchById(id));
-    dispatch(fetchBatchCandidates(id));
+    dispatch(fetchCandidates(id));
   };
 
   const handleConfirmDelete = async () => {
@@ -759,7 +769,6 @@ export default function BatchesPage() {
 
     const resultAction = await dispatch(deleteBatch(batchToDelete.id));
     if (deleteBatch.fulfilled.match(resultAction)) {
-      toast.success("Batch deleted successfully.");
       setBatchToDelete(null);
       refreshBatches();
       if (selectedBatch?.id === batchToDelete.id) {
@@ -795,17 +804,16 @@ export default function BatchesPage() {
     }
 
     const actionResult = await dispatch(
-      createBatchCandidates({
+      createCandidates({
         batchId: selectedBatch.id,
         candidates: validCandidates,
       })
     );
 
-    if (createBatchCandidates.fulfilled.match(actionResult)) {
-      toast.success("Candidates added successfully.");
+    if (createCandidates.fulfilled.match(actionResult)) {
       setIsAddingManually(false);
       setManualCandidates([{ enrollment_no: "", password: "" }]);
-      dispatch(fetchBatchCandidates(selectedBatch.id));
+      dispatch(fetchCandidates(selectedBatch.id));
     }
   };
 
@@ -847,21 +855,18 @@ export default function BatchesPage() {
     }
 
     const actionResult = await dispatch(
-      createBatchCandidates({
+      createCandidates({
         batchId: selectedBatch.id,
         candidates: excelParsedCandidates,
       })
     );
 
-    if (createBatchCandidates.fulfilled.match(actionResult)) {
-      toast.success(
-        `Imported ${excelParsedCandidates.length} candidates successfully.`
-      );
+    if (createCandidates.fulfilled.match(actionResult)) {
       setExcelFile(null);
       setExcelParsedCandidates([]);
       setExcelValidationErrors([]);
       setIsUploadingExcel(false);
-      dispatch(fetchBatchCandidates(selectedBatch.id));
+      dispatch(fetchCandidates(selectedBatch.id));
     }
   };
 
@@ -928,213 +933,259 @@ export default function BatchesPage() {
               Batches
             </h1>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setBulkOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              <FiUploadCloud className="h-4 w-4" />
-              Bulk Upload
-            </button>
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-slate-950/20 transition hover:opacity-90"
-            >
-              <FiPlus className="h-4 w-4" />
-              Create Batch
-            </button>
-            <div className="border-l border-slate-200 pl-5 text-right">
-              <p className="text-3xl font-bold text-slate-950">
-                {totalBatches}
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                Registered Batches
-              </p>
-            </div>
+          <div className="border-l border-slate-200 pl-5 text-right">
+            <p className="text-3xl font-bold text-slate-950">{totalBatches}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Registered Batches
+            </p>
           </div>
         </div>
       </header>
 
-      <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/30">
-                <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  ID
-                </th>
-                <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Name
-                </th>
+      <div className="grid min-h-0 gap-6 lg:min-h-[calc(100vh-18rem)] lg:grid-cols-[minmax(0,1fr)_380px]">
+        {/* LEFT PANEL — Batches Table */}
+        <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/30">
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    ID
+                  </th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Name
+                  </th>
 
-                <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Job Role
-                </th>
-                <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Status
-                </th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Job Role
+                  </th>
+                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Status
+                  </th>
 
-                <th className="px-6 py-5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, index) => (
-                  <tr key={index} className="animate-pulse">
-                    <td className="px-6 py-5">
-                      <div className="h-4 w-10 rounded bg-slate-100" />
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="h-4 w-44 rounded bg-slate-100" />
-                    </td>
+                  <th className="px-6 py-5 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <tr key={index} className="animate-pulse">
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-10 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-44 rounded bg-slate-100" />
+                      </td>
 
-                    <td className="px-6 py-5">
-                      <div className="h-4 w-20 rounded bg-slate-100" />
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="h-4 w-44 rounded bg-slate-100" />
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="ml-auto h-4 w-24 rounded bg-slate-100" />
-                    </td>
-                  </tr>
-                ))
-              ) : batches.length ? (
-                batches.map((batch) => (
-                  <tr
-                    key={batch.id}
-                    className="group transition-colors hover:bg-slate-50/50"
-                  >
-                    <td className="px-6 py-5 text-sm font-medium text-slate-400">
-                      {batch.id}
-                    </td>
-                    <td className="px-6 py-5 text-sm font-semibold text-slate-900">
-                      {batch.name || "Untitled batch"}
-                    </td>
-                    <td className="px-6 py-5 text-sm text-slate-600">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-900">
-                          {getBatchJobRoleName(batch)}
-                        </span>
-                        {getBatchSectorName(batch) && (
-                          <span className="text-xs text-slate-400 font-medium mt-0.5">
-                            {getBatchSectorName(batch)}
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-20 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="h-4 w-44 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="ml-auto h-4 w-24 rounded bg-slate-100" />
+                      </td>
+                    </tr>
+                  ))
+                ) : batches.length ? (
+                  batches.map((batch) => (
+                    <tr
+                      key={batch.id}
+                      className="group transition-colors hover:bg-slate-50/50"
+                    >
+                      <td className="px-6 py-5 text-sm font-medium text-slate-400">
+                        {batch.id}
+                      </td>
+                      <td className="px-6 py-5 text-sm font-semibold text-slate-900">
+                        {batch.name || "Untitled batch"}
+                      </td>
+                      <td className="px-6 py-5 text-sm text-slate-600">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-900">
+                            {getBatchJobRoleName(batch)}
                           </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="flex items-center gap-3">
-                        {/* Status Badge Indicator */}
-                        {batch.is_published ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Published
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 border border-slate-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                            Draft
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                          {getBatchSectorName(batch) && (
+                            <span className="text-xs text-slate-400 font-medium mt-0.5">
+                              {getBatchSectorName(batch)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-3">
+                          {/* Status Badge Indicator */}
+                          {batch.is_published ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Published
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 border border-slate-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                              Draft
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                    <td className="px-6 py-5 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button
-                          onClick={() => handleView(batch.id)}
-                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                          title="View Batch"
-                        >
-                          <FiEye className="h-4.5 w-4.5" />
-                        </button>
-                        {/* <button
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => handleView(batch.id)}
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            title="View Batch"
+                          >
+                            <FiEye className="h-4.5 w-4.5" />
+                          </button>
+                          {/* <button
                           onClick={() => openEditModal(batch)}
                           className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
                           title="Edit Batch"
                         >
                           <FiEdit2 className="h-4.5 w-4.5" />
                         </button> */}
-                        <button
-                          onClick={() => handleOpenSlotModal(batch.id)}
-                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
-                          title="Configure Time Slot"
-                        >
-                          <FiCalendar className="h-4.5 w-4.5" />
-                        </button>
-
-                        {!batch.is_published && (
                           <button
-                            onClick={() => handleOpenPublishModal(batch)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600"
-                            title="Publish Batch"
+                            onClick={() => handleOpenSlotModal(batch.id)}
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
+                            title="Configure Time Slot"
                           >
-                            <FiSend className="h-4.5 w-4.5" />
+                            <FiCalendar className="h-4.5 w-4.5" />
                           </button>
-                        )}
-                        <button
-                          onClick={() => setBatchToDelete(batch)}
-                          disabled={deleting}
-                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                          title="Delete Batch"
-                        >
-                          <FiTrash2 className="h-4.5 w-4.5" />
-                        </button>
-                      </div>
+
+                          <a
+                            href={`${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${batch.id}/exam/login`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
+                            title="Open Candidate Exam Login"
+                          >
+                            <FiExternalLink className="h-4.5 w-4.5" />
+                          </a>
+
+                          {!batch.is_published && (
+                            <button
+                              onClick={() => handleOpenPublishModal(batch)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600"
+                              title="Publish Batch"
+                            >
+                              <FiSend className="h-4.5 w-4.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setBatchToDelete(batch)}
+                            disabled={deleting}
+                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Delete Batch"
+                          >
+                            <FiTrash2 className="h-4.5 w-4.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-20 text-center text-sm text-slate-500"
+                    >
+                      No batches found. Create a batch or upload the Excel
+                      template.
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-20 text-center text-sm text-slate-500"
-                  >
-                    No batches found. Create a batch or upload the Excel
-                    template.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* end overflow-auto */}
 
-        <div className="mt-auto flex items-center justify-between border-t border-slate-100 bg-slate-50/20 px-6 py-5">
-          <p className="text-sm text-slate-500">
-            Page{" "}
-            <span className="font-semibold text-slate-950">{currentPage}</span>{" "}
-            of{" "}
-            <span className="font-semibold text-slate-950">
-              {totalPages || 1}
-            </span>
-          </p>
-          <div className="flex gap-2">
-            <button
-              disabled={!hasPrev || loading}
-              onClick={() =>
-                dispatch(fetchBatches({ page: currentPage - 1, limit: 10 }))
-              }
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              disabled={!hasNext || loading}
-              onClick={() =>
-                dispatch(fetchBatches({ page: currentPage + 1, limit: 10 }))
-              }
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Next
-            </button>
+          <div className="mt-auto flex items-center justify-between border-t border-slate-100 bg-slate-50/20 px-6 py-5">
+            <p className="text-sm text-slate-500">
+              Page{" "}
+              <span className="font-semibold text-slate-950">
+                {currentPage}
+              </span>{" "}
+              of{" "}
+              <span className="font-semibold text-slate-950">
+                {totalPages || 1}
+              </span>
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={!hasPrev || loading}
+                onClick={() =>
+                  dispatch(fetchBatches({ page: currentPage - 1, limit: 10 }))
+                }
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                disabled={!hasNext || loading}
+                onClick={() =>
+                  dispatch(fetchBatches({ page: currentPage + 1, limit: 10 }))
+                }
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          {/* end left panel */}
+        </div>
+        {/* RIGHT PANEL — Actions */}
+        <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+          <div className="border-b border-slate-100 px-6 py-5">
+            <h2 className="text-sm font-bold text-slate-950">Batch Actions</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Create a new batch or bulk import from Excel.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-6">
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
+                  <FiPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    Create Batch
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Configure a new batch with sections and NOS.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                  <FiUploadCloud className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    Bulk Upload
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Import multiple batches from an .xlsx file.
+                  </p>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
+      {/* end grid */}
 
       {batchToPublish && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
@@ -1253,6 +1304,131 @@ export default function BatchesPage() {
                 </Field>
               </div>
 
+              {/* Authorization toggles */}
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Authorization Required
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {(
+                    [
+                      {
+                        key: "is_authorization_required_in_theory" as const,
+                        label: "Theory",
+                        marksKey: null,
+                      },
+                      {
+                        key: "is_authorization_required_in_practical" as const,
+                        label: "Practical",
+                        marksKey: "total_practical_marks" as const,
+                      },
+                      {
+                        key: "is_authorization_required_in_viva" as const,
+                        label: "Viva",
+                        marksKey: "total_viva_marks" as const,
+                      },
+                    ] as const
+                  )
+                    .filter(
+                      ({ marksKey }) =>
+                        marksKey === null ||
+                        Number(selectedJobRole?.[marksKey]) > 0 ||
+                        (modalMode === "edit" &&
+                          form[
+                            marksKey === "total_practical_marks"
+                              ? "is_authorization_required_in_practical"
+                              : "is_authorization_required_in_viva"
+                          ])
+                    )
+                    .map(({ key, label }) => (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
+                      >
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={form[key]}
+                          onClick={() => setFormField(key, !form[key])}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                            form[key] ? "bg-slate-950" : "bg-slate-200"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                              form[key] ? "translate-x-4" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {label}
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+
+              {/* Time fields */}
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Time (minutes)
+                </p>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Theory Time">
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.theory_time ?? 0}
+                      onChange={(e) =>
+                        setFormField(
+                          "theory_time",
+                          Math.max(0, Number(e.target.value))
+                        )
+                      }
+                      className={INPUT_CLASS}
+                      placeholder="0"
+                    />
+                  </Field>
+                  {(Number(selectedJobRole?.total_practical_marks) > 0 ||
+                    (modalMode === "edit" &&
+                      (form.practical_time ?? 0) > 0)) && (
+                    <Field label="Practical Time">
+                      <input
+                        type="number"
+                        min={0}
+                        value={form.practical_time ?? 0}
+                        onChange={(e) =>
+                          setFormField(
+                            "practical_time",
+                            Math.max(0, Number(e.target.value))
+                          )
+                        }
+                        className={INPUT_CLASS}
+                        placeholder="0"
+                      />
+                    </Field>
+                  )}
+                  {(Number(selectedJobRole?.total_viva_marks) > 0 ||
+                    (modalMode === "edit" && (form.viva_time ?? 0) > 0)) && (
+                    <Field label="Viva Time">
+                      <input
+                        type="number"
+                        min={0}
+                        value={form.viva_time ?? 0}
+                        onChange={(e) =>
+                          setFormField(
+                            "viva_time",
+                            Math.max(0, Number(e.target.value))
+                          )
+                        }
+                        className={INPUT_CLASS}
+                        placeholder="0"
+                      />
+                    </Field>
+                  )}
+                </div>
+              </div>
+
               {form.job_role_id && (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                   {jobRoleDetailLoading ? (
@@ -1264,13 +1440,17 @@ export default function BatchesPage() {
                         Theory:{" "}
                         {Number(selectedJobRole.total_theory_marks) || 0}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                        Practical:{" "}
-                        {Number(selectedJobRole.total_practical_marks) || 0}
-                      </span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                        Viva: {Number(selectedJobRole.total_viva_marks) || 0}
-                      </span>
+                      {Number(selectedJobRole.total_practical_marks) > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                          Practical:{" "}
+                          {Number(selectedJobRole.total_practical_marks)}
+                        </span>
+                      )}
+                      {Number(selectedJobRole.total_viva_marks) > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                          Viva: {Number(selectedJobRole.total_viva_marks)}
+                        </span>
+                      )}
                     </div>
                   ) : (
                     `Select a job role to load NOS details.`
@@ -1297,521 +1477,567 @@ export default function BatchesPage() {
               </div>
 
               <div className="mt-3 space-y-5">
-                {form.sections.map((section, sectionIndex) => (
-                  <div
-                    key={`${section.type}-${sectionIndex}`}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5"
-                  >
-                    <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-                      <Field label="Section Name">
-                        <input
-                          value={section.name}
-                          onChange={(event) =>
-                            updateSection(sectionIndex, {
-                              ...section,
-                              name: event.target.value,
-                            })
-                          }
-                          className={INPUT_CLASS}
-                        />
-                      </Field>
-                      <Field label="Type">
-                        <select
-                          value={section.type}
-                          onChange={(event) =>
-                            updateSection(sectionIndex, {
-                              ...section,
-                              type: event.target.value as BatchSectionType,
-                            })
-                          }
-                          className={INPUT_CLASS}
-                        >
-                          {SECTION_TYPES.map((type) => (
-                            <option key={type} value={type}>
-                              {type}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <div className="flex items-end">
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateSection(sectionIndex, {
-                                ...section,
-                                nos_list: [...section.nos_list, createNos()],
-                              })
-                            }
-                            className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700"
-                          >
-                            Add NOS
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeSection(sectionIndex)}
-                            disabled={form.sections.length <= 1}
-                            className="rounded-xl border border-red-100 bg-white px-4 py-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Remove Section
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 space-y-4">
-                      {section.nos_list.map((nos, nosIndex) => (
-                        <div
-                          key={`${sectionIndex}-${nosIndex}`}
-                          className="rounded-2xl border border-white bg-white p-4 shadow-sm"
-                        >
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                NOS {nosIndex + 1}
-                                {nos.nos_code && (
-                                  <span className="ml-2 normal-case tracking-normal text-slate-500">
-                                    ({nos.nos_code})
-                                  </span>
-                                )}
-                              </p>
-                              {nos.nos_code &&
-                                (() => {
-                                  const matchedNos = selectedNosList.find(
-                                    (jobRoleNos) =>
-                                      getNosCode(jobRoleNos) === nos.nos_code
-                                  );
-                                  if (!matchedNos) return null;
-                                  return (
-                                    <div className="flex items-center gap-1.5">
-                                      {Number(matchedNos.total_theory_marks) >
-                                        0 && (
-                                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
-                                          T:{matchedNos.total_theory_marks}
-                                        </span>
-                                      )}
-                                      {Number(
-                                        matchedNos.total_practical_marks
-                                      ) > 0 && (
-                                        <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
-                                          P:{matchedNos.total_practical_marks}
-                                        </span>
-                                      )}
-                                      {Number(matchedNos.total_viva_marks) >
-                                        0 && (
-                                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
-                                          V:{matchedNos.total_viva_marks}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeNos(sectionIndex, nosIndex)}
-                              disabled={section.nos_list.length <= 1}
-                              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              <FiTrash2 className="h-3.5 w-3.5" />
-                              Remove NOS
-                            </button>
-                          </div>
-
-                          <div className="grid gap-3 lg:grid-cols-7">
-                            <Field label="Topic">
-                              <select
-                                value={nos.topic_id}
-                                onChange={(event) =>
-                                  handleNosTopicChange(
-                                    sectionIndex,
-                                    nosIndex,
-                                    event.target.value
-                                  )
-                                }
-                                className={INPUT_CLASS}
-                              >
-                                <option value="">Topic</option>
-                                {topics.map((topic) => (
-                                  <option key={topic.id} value={topic.id}>
-                                    {topic.name}
-                                    {questionCounts[String(topic.id)] !==
-                                    undefined
-                                      ? ` (${
-                                          questionCounts[String(topic.id)]
-                                        } questions)`
-                                      : ""}
-                                  </option>
-                                ))}
-                              </select>
-                              {nos.topic_id && (
-                                <span className="ml-1 text-xs font-semibold text-slate-500">
-                                  Available:{" "}
-                                  {questionCounts[nos.topic_id] ?? "Loading..."}
-                                </span>
-                              )}
-                            </Field>
-                            <Field label="NOS Code">
-                              <select
-                                value={nos.nos_code}
-                                onChange={(event) =>
-                                  handleNosCodeChange(
-                                    sectionIndex,
-                                    nosIndex,
-                                    event.target.value
-                                  )
-                                }
-                                className={INPUT_CLASS}
-                                disabled={!selectedNosList.length}
-                              >
-                                <option value="">Select NOS</option>
-                                {selectedNosList.map((jobRoleNos) => {
-                                  const nosCode = getNosCode(jobRoleNos);
-                                  return (
-                                    <option
-                                      key={jobRoleNos.id || nosCode}
-                                      value={nosCode}
-                                    >
-                                      {nosCode}{" "}
-                                      {jobRoleNos.name
-                                        ? `- ${jobRoleNos.name}`
-                                        : ""}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </Field>
-                            <Field label="Questions">
-                              <input
-                                type="number"
-                                value={nos.question_count}
-                                onChange={(event) =>
-                                  updateNos(sectionIndex, nosIndex, {
-                                    ...nos,
-                                    question_count: event.target.value,
-                                  })
-                                }
-                                className={INPUT_CLASS}
-                              />
-                              {nos.topic_id && (
-                                <span className="ml-1 text-xs text-slate-400">
-                                  {questionCounts[nos.topic_id] === undefined
-                                    ? "Loading..."
-                                    : `of ${
-                                        questionCounts[nos.topic_id]
-                                      } available`}
-                                </span>
-                              )}
-                              {nos.topic_id &&
-                                questionCounts[nos.topic_id] !== undefined &&
-                                Number(nos.question_count) >
-                                  questionCounts[nos.topic_id] && (
-                                  <span className="ml-1 text-xs font-semibold text-red-500">
-                                    Exceeds available questions
-                                  </span>
-                                )}
-                            </Field>
-                            <Field label="Difficulty">
-                              <select
-                                value={nos.difficulty_lvl}
-                                onChange={(event) =>
-                                  updateNos(sectionIndex, nosIndex, {
-                                    ...nos,
-                                    difficulty_lvl: event.target
-                                      .value as BatchDifficultyLevel,
-                                  })
-                                }
-                                className={INPUT_CLASS}
-                              >
-                                {DIFFICULTIES.map((value) => (
-                                  <option key={value} value={value}>
-                                    {value}
-                                  </option>
-                                ))}
-                              </select>
-                            </Field>
-                            <Field label="Question Type">
-                              <select
-                                value={nos.question_type}
-                                onChange={(event) =>
-                                  updateNos(sectionIndex, nosIndex, {
-                                    ...nos,
-                                    question_type: event.target
-                                      .value as BatchQuestionType,
-                                  })
-                                }
-                                className={INPUT_CLASS}
-                              >
-                                {QUESTION_TYPES.map((value) => (
-                                  <option key={value} value={value}>
-                                    {value}
-                                  </option>
-                                ))}
-                              </select>
-                            </Field>
-                            <Field label="Correct Mark">
-                              <input
-                                type="number"
-                                value={nos.correct_mark}
-                                onChange={(event) =>
-                                  updateNos(sectionIndex, nosIndex, {
-                                    ...nos,
-                                    correct_mark: event.target.value,
-                                  })
-                                }
-                                className={INPUT_CLASS}
-                              />
-                            </Field>
-                            <Field label="Negative Mark">
-                              <input
-                                type="number"
-                                value={nos.negative_mark}
-                                onChange={(event) =>
-                                  updateNos(sectionIndex, nosIndex, {
-                                    ...nos,
-                                    negative_mark: event.target.value,
-                                  })
-                                }
-                                className={INPUT_CLASS}
-                              />
-                            </Field>
-                          </div>
-
-                          <div className="mt-3 flex items-center justify-between">
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                              PC List
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateNos(sectionIndex, nosIndex, {
-                                  ...nos,
-                                  pc_list: [
-                                    ...nos.pc_list,
-                                    createPc({
-                                      topic_id: nos.topic_id,
-                                      nos_code: nos.nos_code,
-                                      difficulty_lvl: nos.difficulty_lvl,
-                                      question_type: nos.question_type,
-                                    }),
-                                  ],
+                {form.sections
+                  .filter((section) => {
+                    if (section.type === "practical")
+                      return (
+                        Number(selectedJobRole?.total_practical_marks) > 0 ||
+                        modalMode === "edit"
+                      );
+                    if (section.type === "viva")
+                      return (
+                        Number(selectedJobRole?.total_viva_marks) > 0 ||
+                        modalMode === "edit"
+                      );
+                    return true;
+                  })
+                  .map((section) => {
+                    const sectionIndex = form.sections.indexOf(section);
+                    return (
+                      <div
+                        key={`${section.type}-${sectionIndex}`}
+                        className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5"
+                      >
+                        <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+                          <Field label="Section Name">
+                            <input
+                              value={section.name}
+                              onChange={(event) =>
+                                updateSection(sectionIndex, {
+                                  ...section,
+                                  name: event.target.value,
                                 })
                               }
-                              className="text-xs font-semibold text-slate-700"
+                              className={INPUT_CLASS}
+                            />
+                          </Field>
+                          <Field label="Type">
+                            <select
+                              value={section.type}
+                              onChange={(event) =>
+                                updateSection(sectionIndex, {
+                                  ...section,
+                                  type: event.target.value as BatchSectionType,
+                                })
+                              }
+                              className={INPUT_CLASS}
                             >
-                              Add PC
-                            </button>
-                          </div>
-
-                          <div className="mt-3 space-y-2">
-                            {nos.pc_list.length ? (
-                              nos.pc_list.map((pc, pcIndex) => {
-                                const selectedNos = selectedNosList.find(
-                                  (jobRoleNos) =>
-                                    getNosCode(jobRoleNos) === nos.nos_code
-                                );
-                                const pcOptions = selectedNos?.pc_list || [];
-
-                                return (
-                                  <div
-                                    key={`${sectionIndex}-${nosIndex}-${pcIndex}`}
-                                    className="rounded-xl bg-slate-50 p-3"
-                                  >
-                                    <div className="mb-2 flex items-center justify-between gap-3">
-                                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                                        PC {pcIndex + 1}
-                                      </p>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          removePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex
-                                          )
-                                        }
-                                        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                                      >
-                                        <FiTrash2 className="h-3.5 w-3.5" />
-                                        Remove PC
-                                      </button>
-                                    </div>
-                                    <div className="grid gap-2 lg:grid-cols-7">
-                                      {pcOptions.length ? (
-                                        <select
-                                          value={pc.pc_code}
-                                          onChange={(event) =>
-                                            handlePcCodeChange(
-                                              sectionIndex,
-                                              nosIndex,
-                                              pcIndex,
-                                              event.target.value
-                                            )
-                                          }
-                                          className={INPUT_CLASS}
-                                        >
-                                          <option value="">Select PC</option>
-                                          {pcOptions.map((option) => {
-                                            const pcCode =
-                                              option.code ||
-                                              option.pc_code ||
-                                              "";
-                                            return (
-                                              <option
-                                                key={option.id || pcCode}
-                                                value={pcCode}
-                                              >
-                                                {pcCode}{" "}
-                                                {option.name
-                                                  ? `- ${option.name}`
-                                                  : ""}
-                                              </option>
-                                            );
-                                          })}
-                                        </select>
-                                      ) : (
-                                        <input
-                                          value={pc.pc_code}
-                                          onChange={(event) =>
-                                            handlePcCodeChange(
-                                              sectionIndex,
-                                              nosIndex,
-                                              pcIndex,
-                                              event.target.value
-                                            )
-                                          }
-                                          className={INPUT_CLASS}
-                                          placeholder="PC code"
-                                        />
-                                      )}
-                                      <input
-                                        value={pc.nos_code}
-                                        onChange={(event) =>
-                                          updatePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex,
-                                            {
-                                              ...pc,
-                                              nos_code: event.target.value,
-                                            }
-                                          )
-                                        }
-                                        className={INPUT_CLASS}
-                                        placeholder="NOS code"
-                                      />
-                                      <input
-                                        type="number"
-                                        value={pc.question_count}
-                                        onChange={(event) =>
-                                          updatePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex,
-                                            {
-                                              ...pc,
-                                              question_count:
-                                                event.target.value,
-                                            }
-                                          )
-                                        }
-                                        className={INPUT_CLASS}
-                                        placeholder="Questions"
-                                      />
-                                      <select
-                                        value={pc.difficulty_lvl}
-                                        onChange={(event) =>
-                                          updatePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex,
-                                            {
-                                              ...pc,
-                                              difficulty_lvl: event.target
-                                                .value as BatchDifficultyLevel,
-                                            }
-                                          )
-                                        }
-                                        className={INPUT_CLASS}
-                                      >
-                                        {DIFFICULTIES.map((value) => (
-                                          <option key={value} value={value}>
-                                            {value}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <select
-                                        value={pc.question_type}
-                                        onChange={(event) =>
-                                          updatePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex,
-                                            {
-                                              ...pc,
-                                              question_type: event.target
-                                                .value as BatchQuestionType,
-                                            }
-                                          )
-                                        }
-                                        className={INPUT_CLASS}
-                                      >
-                                        {QUESTION_TYPES.map((value) => (
-                                          <option key={value} value={value}>
-                                            {value}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <input
-                                        type="number"
-                                        value={pc.correct_mark}
-                                        onChange={(event) =>
-                                          updatePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex,
-                                            {
-                                              ...pc,
-                                              correct_mark: event.target.value,
-                                            }
-                                          )
-                                        }
-                                        className={INPUT_CLASS}
-                                        placeholder="Correct"
-                                      />
-                                      <input
-                                        type="number"
-                                        value={pc.negative_mark}
-                                        onChange={(event) =>
-                                          updatePc(
-                                            sectionIndex,
-                                            nosIndex,
-                                            pcIndex,
-                                            {
-                                              ...pc,
-                                              negative_mark: event.target.value,
-                                            }
-                                          )
-                                        }
-                                        className={INPUT_CLASS}
-                                        placeholder="Negative"
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-4 text-sm text-slate-500">
-                                No PC rows added. Use Add PC when this NOS needs
-                                PC-level marks.
-                              </div>
-                            )}
+                              {SECTION_TYPES.filter((type) => {
+                                if (type === "practical")
+                                  return (
+                                    Number(
+                                      selectedJobRole?.total_practical_marks
+                                    ) > 0
+                                  );
+                                if (type === "viva")
+                                  return (
+                                    Number(selectedJobRole?.total_viva_marks) >
+                                    0
+                                  );
+                                return true;
+                              }).map((type) => (
+                                <option key={type} value={type}>
+                                  {type}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <div className="flex items-end">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateSection(sectionIndex, {
+                                    ...section,
+                                    nos_list: [
+                                      ...section.nos_list,
+                                      createNos(),
+                                    ],
+                                  })
+                                }
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700"
+                              >
+                                Add NOS
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeSection(sectionIndex)}
+                                disabled={form.sections.length <= 1}
+                                className="rounded-xl border border-red-100 bg-white px-4 py-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Remove Section
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+
+                        <div className="mt-4 space-y-4">
+                          {section.nos_list.map((nos, nosIndex) => (
+                            <div
+                              key={`${sectionIndex}-${nosIndex}`}
+                              className="rounded-2xl border border-white bg-white p-4 shadow-sm"
+                            >
+                              <div className="mb-3 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                    NOS {nosIndex + 1}
+                                    {nos.nos_code && (
+                                      <span className="ml-2 normal-case tracking-normal text-slate-500">
+                                        ({nos.nos_code})
+                                      </span>
+                                    )}
+                                  </p>
+                                  {nos.nos_code &&
+                                    (() => {
+                                      const matchedNos = selectedNosList.find(
+                                        (jobRoleNos) =>
+                                          getNosCode(jobRoleNos) ===
+                                          nos.nos_code
+                                      );
+                                      if (!matchedNos) return null;
+                                      return (
+                                        <div className="flex items-center gap-1.5">
+                                          {Number(
+                                            matchedNos.total_theory_marks
+                                          ) > 0 && (
+                                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
+                                              T:{matchedNos.total_theory_marks}
+                                            </span>
+                                          )}
+                                          {Number(
+                                            matchedNos.total_practical_marks
+                                          ) > 0 && (
+                                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
+                                              P:
+                                              {matchedNos.total_practical_marks}
+                                            </span>
+                                          )}
+                                          {Number(matchedNos.total_viva_marks) >
+                                            0 && (
+                                            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
+                                              V:{matchedNos.total_viva_marks}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeNos(sectionIndex, nosIndex)
+                                  }
+                                  disabled={section.nos_list.length <= 1}
+                                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <FiTrash2 className="h-3.5 w-3.5" />
+                                  Remove NOS
+                                </button>
+                              </div>
+
+                              <div className="grid gap-3 lg:grid-cols-7">
+                                <Field label="Topic">
+                                  <select
+                                    value={nos.topic_id}
+                                    onChange={(event) =>
+                                      handleNosTopicChange(
+                                        sectionIndex,
+                                        nosIndex,
+                                        event.target.value
+                                      )
+                                    }
+                                    className={INPUT_CLASS}
+                                  >
+                                    <option value="">Topic</option>
+                                    {topics.map((topic) => (
+                                      <option key={topic.id} value={topic.id}>
+                                        {topic.name}
+                                        {questionCounts[String(topic.id)] !==
+                                        undefined
+                                          ? ` (${
+                                              questionCounts[String(topic.id)]
+                                            } questions)`
+                                          : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {nos.topic_id && (
+                                    <span className="ml-1 text-xs font-semibold text-slate-500">
+                                      Available:{" "}
+                                      {questionCounts[nos.topic_id] ??
+                                        "Loading..."}
+                                    </span>
+                                  )}
+                                </Field>
+                                <Field label="NOS Code">
+                                  <select
+                                    value={nos.nos_code}
+                                    onChange={(event) =>
+                                      handleNosCodeChange(
+                                        sectionIndex,
+                                        nosIndex,
+                                        event.target.value
+                                      )
+                                    }
+                                    className={INPUT_CLASS}
+                                    disabled={!selectedNosList.length}
+                                  >
+                                    <option value="">Select NOS</option>
+                                    {selectedNosList.map((jobRoleNos) => {
+                                      const nosCode = getNosCode(jobRoleNos);
+                                      return (
+                                        <option
+                                          key={jobRoleNos.id || nosCode}
+                                          value={nosCode}
+                                        >
+                                          {nosCode}{" "}
+                                          {jobRoleNos.name
+                                            ? `- ${jobRoleNos.name}`
+                                            : ""}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </Field>
+                                <Field label="Questions">
+                                  <input
+                                    type="number"
+                                    value={nos.question_count}
+                                    onChange={(event) =>
+                                      updateNos(sectionIndex, nosIndex, {
+                                        ...nos,
+                                        question_count: event.target.value,
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                  />
+                                  {nos.topic_id && (
+                                    <span className="ml-1 text-xs text-slate-400">
+                                      {questionCounts[nos.topic_id] ===
+                                      undefined
+                                        ? "Loading..."
+                                        : `of ${
+                                            questionCounts[nos.topic_id]
+                                          } available`}
+                                    </span>
+                                  )}
+                                  {nos.topic_id &&
+                                    questionCounts[nos.topic_id] !==
+                                      undefined &&
+                                    Number(nos.question_count) >
+                                      questionCounts[nos.topic_id] && (
+                                      <span className="ml-1 text-xs font-semibold text-red-500">
+                                        Exceeds available questions
+                                      </span>
+                                    )}
+                                </Field>
+                                <Field label="Difficulty">
+                                  <select
+                                    value={nos.difficulty_lvl}
+                                    onChange={(event) =>
+                                      updateNos(sectionIndex, nosIndex, {
+                                        ...nos,
+                                        difficulty_lvl: event.target
+                                          .value as BatchDifficultyLevel,
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                  >
+                                    {DIFFICULTIES.map((value) => (
+                                      <option key={value} value={value}>
+                                        {value}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Question Type">
+                                  <select
+                                    value={nos.question_type}
+                                    onChange={(event) =>
+                                      updateNos(sectionIndex, nosIndex, {
+                                        ...nos,
+                                        question_type: event.target
+                                          .value as BatchQuestionType,
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                  >
+                                    {QUESTION_TYPES.map((value) => (
+                                      <option key={value} value={value}>
+                                        {value}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Correct Mark">
+                                  <input
+                                    type="number"
+                                    value={nos.correct_mark}
+                                    onChange={(event) =>
+                                      updateNos(sectionIndex, nosIndex, {
+                                        ...nos,
+                                        correct_mark: event.target.value,
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                  />
+                                </Field>
+                                <Field label="Negative Mark">
+                                  <input
+                                    type="number"
+                                    value={nos.negative_mark}
+                                    onChange={(event) =>
+                                      updateNos(sectionIndex, nosIndex, {
+                                        ...nos,
+                                        negative_mark: event.target.value,
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                  />
+                                </Field>
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between">
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  PC List
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateNos(sectionIndex, nosIndex, {
+                                      ...nos,
+                                      pc_list: [
+                                        ...nos.pc_list,
+                                        createPc({
+                                          topic_id: nos.topic_id,
+                                          nos_code: nos.nos_code,
+                                          difficulty_lvl: nos.difficulty_lvl,
+                                          question_type: nos.question_type,
+                                        }),
+                                      ],
+                                    })
+                                  }
+                                  className="text-xs font-semibold text-slate-700"
+                                >
+                                  Add PC
+                                </button>
+                              </div>
+
+                              <div className="mt-3 space-y-2">
+                                {nos.pc_list.length ? (
+                                  nos.pc_list.map((pc, pcIndex) => {
+                                    const selectedNos = selectedNosList.find(
+                                      (jobRoleNos) =>
+                                        getNosCode(jobRoleNos) === nos.nos_code
+                                    );
+                                    const pcOptions =
+                                      selectedNos?.pc_list || [];
+
+                                    return (
+                                      <div
+                                        key={`${sectionIndex}-${nosIndex}-${pcIndex}`}
+                                        className="rounded-xl bg-slate-50 p-3"
+                                      >
+                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                            PC {pcIndex + 1}
+                                          </p>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex
+                                              )
+                                            }
+                                            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                                          >
+                                            <FiTrash2 className="h-3.5 w-3.5" />
+                                            Remove PC
+                                          </button>
+                                        </div>
+                                        <div className="grid gap-2 lg:grid-cols-7">
+                                          {pcOptions.length ? (
+                                            <select
+                                              value={pc.pc_code}
+                                              onChange={(event) =>
+                                                handlePcCodeChange(
+                                                  sectionIndex,
+                                                  nosIndex,
+                                                  pcIndex,
+                                                  event.target.value
+                                                )
+                                              }
+                                              className={INPUT_CLASS}
+                                            >
+                                              <option value="">
+                                                Select PC
+                                              </option>
+                                              {pcOptions.map((option) => {
+                                                const pcCode =
+                                                  option.code ||
+                                                  option.pc_code ||
+                                                  "";
+                                                return (
+                                                  <option
+                                                    key={option.id || pcCode}
+                                                    value={pcCode}
+                                                  >
+                                                    {pcCode}{" "}
+                                                    {option.name
+                                                      ? `- ${option.name}`
+                                                      : ""}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+                                          ) : (
+                                            <input
+                                              value={pc.pc_code}
+                                              onChange={(event) =>
+                                                handlePcCodeChange(
+                                                  sectionIndex,
+                                                  nosIndex,
+                                                  pcIndex,
+                                                  event.target.value
+                                                )
+                                              }
+                                              className={INPUT_CLASS}
+                                              placeholder="PC code"
+                                            />
+                                          )}
+                                          <input
+                                            value={pc.nos_code}
+                                            onChange={(event) =>
+                                              updatePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex,
+                                                {
+                                                  ...pc,
+                                                  nos_code: event.target.value,
+                                                }
+                                              )
+                                            }
+                                            className={INPUT_CLASS}
+                                            placeholder="NOS code"
+                                          />
+                                          <input
+                                            type="number"
+                                            value={pc.question_count}
+                                            onChange={(event) =>
+                                              updatePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex,
+                                                {
+                                                  ...pc,
+                                                  question_count:
+                                                    event.target.value,
+                                                }
+                                              )
+                                            }
+                                            className={INPUT_CLASS}
+                                            placeholder="Questions"
+                                          />
+                                          <select
+                                            value={pc.difficulty_lvl}
+                                            onChange={(event) =>
+                                              updatePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex,
+                                                {
+                                                  ...pc,
+                                                  difficulty_lvl: event.target
+                                                    .value as BatchDifficultyLevel,
+                                                }
+                                              )
+                                            }
+                                            className={INPUT_CLASS}
+                                          >
+                                            {DIFFICULTIES.map((value) => (
+                                              <option key={value} value={value}>
+                                                {value}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <select
+                                            value={pc.question_type}
+                                            onChange={(event) =>
+                                              updatePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex,
+                                                {
+                                                  ...pc,
+                                                  question_type: event.target
+                                                    .value as BatchQuestionType,
+                                                }
+                                              )
+                                            }
+                                            className={INPUT_CLASS}
+                                          >
+                                            {QUESTION_TYPES.map((value) => (
+                                              <option key={value} value={value}>
+                                                {value}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <input
+                                            type="number"
+                                            value={pc.correct_mark}
+                                            onChange={(event) =>
+                                              updatePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex,
+                                                {
+                                                  ...pc,
+                                                  correct_mark:
+                                                    event.target.value,
+                                                }
+                                              )
+                                            }
+                                            className={INPUT_CLASS}
+                                            placeholder="Correct"
+                                          />
+                                          <input
+                                            type="number"
+                                            value={pc.negative_mark}
+                                            onChange={(event) =>
+                                              updatePc(
+                                                sectionIndex,
+                                                nosIndex,
+                                                pcIndex,
+                                                {
+                                                  ...pc,
+                                                  negative_mark:
+                                                    event.target.value,
+                                                }
+                                              )
+                                            }
+                                            className={INPUT_CLASS}
+                                            placeholder="Negative"
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-4 text-sm text-slate-500">
+                                    No PC rows added. Use Add PC when this NOS
+                                    needs PC-level marks.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
 
@@ -2006,6 +2232,44 @@ export default function BatchesPage() {
                       <p className="mt-1 text-sm text-slate-600">
                         {getBatchJobRoleName(selectedBatch)}
                       </p>
+                    </div>
+                  </div>
+
+                  {/* Candidate Exam Link */}
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.15em] text-sky-700 mb-2">
+                      Candidate Exam Link
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 overflow-hidden rounded-xl border border-sky-200 bg-white px-3 py-2.5">
+                        <p className="truncate text-xs font-mono text-slate-600">
+                          {`${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${selectedBatch.id}/exam/login`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${selectedBatch.id}/exam/login`;
+                          navigator.clipboard.writeText(url);
+                          toast.success('Exam link copied to clipboard!');
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                        title="Copy Link"
+                      >
+                        <FiCopy className="h-3.5 w-3.5" />
+                        Copy
+                      </button>
+                      <a
+                        href={`${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${selectedBatch.id}/exam/login`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                        title="Open Exam Link"
+                      >
+                        <FiExternalLink className="h-3.5 w-3.5" />
+                        Open
+                      </a>
+                     
                     </div>
                   </div>
 
@@ -2458,6 +2722,16 @@ export default function BatchesPage() {
           </form>
         </div>
       )}
+      <ToastContainer
+        position="top-right"
+        autoClose={4000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
     </section>
   );
 }

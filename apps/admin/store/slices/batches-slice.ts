@@ -1,18 +1,11 @@
 import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { toast } from "react-toastify";
 import api from "@/lib/api";
 
 export type BatchSectionType = "theory" | "practical" | "viva";
 export type BatchDifficultyLevel = "easy" | "medium" | "hard";
 export type BatchQuestionType = "mcq" | "rubric";
 
-export type BatchCandidate = {
-  id?: string | number;
-  enrollment_no: string;
-  password: string;
-  batch_id?: string | number;
-  created_at?: string;
-  updated_at?: string;
-};
 
 export type BatchPcPayload = {
   topic_id: number;
@@ -48,6 +41,9 @@ export type BatchPayload = {
   theory_time: number;
   practical_time: number;
   viva_time: number;
+  is_authorization_required_in_theory: boolean;
+  is_authorization_required_in_practical: boolean;
+  is_authorization_required_in_viva: boolean;
   sections: BatchSectionPayload[];
 };
 
@@ -59,6 +55,9 @@ export type Batch = Partial<BatchPayload> & {
   theory_test?: any;
   practical_test?: any;
   viva_test?: any;
+  is_authorization_required_in_theory?: boolean;
+  is_authorization_required_in_practical?: boolean;
+  is_authorization_required_in_viva?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -105,9 +104,7 @@ interface BatchesState {
   deleting: boolean;
   viewLoading: boolean;
   selectedBatch: Batch | null;
-  batchCandidates: BatchCandidate[];
-  candidatesLoading: boolean;
-  candidatesError: string | null;
+
   error: string | null;
 }
 
@@ -125,9 +122,7 @@ const initialState: BatchesState = {
   deleting: false,
   viewLoading: false,
   selectedBatch: null,
-  batchCandidates: [],
-  candidatesLoading: false,
-  candidatesError: null,
+
   error: null,
 };
 
@@ -233,11 +228,15 @@ export const setBatchSlot = createAsyncThunk(
   async ({ batchId, ...payload }: SetSlotInput, { rejectWithValue }) => {
     try {
       const response = await api.patch(`/batches/${batchId}/set-slot`, payload);
+      toast.success("Test slot scheduled successfully!");
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to set slot configuration")
+      const message = getErrorMessage(
+        error,
+        "Failed to set slot configuration"
       );
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -247,9 +246,12 @@ export const publishBatch = createAsyncThunk(
   async (batchId: string | number, { rejectWithValue }) => {
     try {
       const response = await api.patch(`/batches/${batchId}/publish`);
+      toast.success("Batch published successfully!");
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(getErrorMessage(error, "Failed to publish batch"));
+      const message = getErrorMessage(error, "Failed to publish batch");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -265,7 +267,9 @@ export const fetchBatches = createAsyncThunk(
       }
       return data;
     } catch (error: any) {
-      return rejectWithValue(getErrorMessage(error, "Failed to fetch batches"));
+      const message = getErrorMessage(error, "Failed to fetch batches");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -277,9 +281,9 @@ export const fetchBatchById = createAsyncThunk(
       const response = await api.get(`/batches/${id}`);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to fetch batch details")
-      );
+      const message = getErrorMessage(error, "Failed to fetch batch details");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -290,11 +294,12 @@ export const createBatches = createAsyncThunk(
     try {
       console.log(JSON.stringify(batches, null, 2));
       const response = await api.post("/batches", batches);
+      toast.success("Batch created successfully.");
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to create batches")
-      );
+      const message = getErrorMessage(error, "Failed to create batches");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -304,9 +309,12 @@ export const updateBatch = createAsyncThunk(
   async ({ id, ...payload }: UpdateBatchInput, { rejectWithValue }) => {
     try {
       const response = await api.patch(`/batches/${id}`, payload);
+      toast.success("Batch updated successfully.");
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(getErrorMessage(error, "Failed to update batch"));
+      const message = getErrorMessage(error, "Failed to update batch");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
@@ -316,51 +324,17 @@ export const deleteBatch = createAsyncThunk(
   async (id: string | number, { rejectWithValue }) => {
     try {
       await api.delete(`/batches/${id}`);
+      toast.success("Batch deleted successfully.");
       return id;
     } catch (error: any) {
-      return rejectWithValue(getErrorMessage(error, "Failed to delete batch"));
+      const message = getErrorMessage(error, "Failed to delete batch");
+      toast.error(message);
+      return rejectWithValue(message);
     }
   }
 );
 
-export const fetchBatchCandidates = createAsyncThunk(
-  "batches/fetchBatchCandidates",
-  async (batchId: string | number, { rejectWithValue }) => {
-    try {
-      const response = await api.get(`/batches/${batchId}/candidates`);
-      return response.data;
-    } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to fetch candidates")
-      );
-    }
-  }
-);
 
-export const createBatchCandidates = createAsyncThunk(
-  "batches/createBatchCandidates",
-  async (
-    {
-      batchId,
-      candidates,
-    }: {
-      batchId: string | number;
-      candidates: Array<{ enrollment_no: string; password: string }>;
-    },
-    { rejectWithValue }
-  ) => {
-    try {
-      const response = await api.post(`/batches/${batchId}/candidates`, {
-        candidates,
-      });
-      return response.data;
-    } catch (error: any) {
-      return rejectWithValue(
-        getErrorMessage(error, "Failed to create candidates")
-      );
-    }
-  }
-);
 
 const batchesSlice = createSlice({
   name: "batches",
@@ -496,40 +470,7 @@ const batchesSlice = createSlice({
         state.deleting = false;
         state.error = action.payload as string;
       })
-      .addCase(fetchBatchCandidates.pending, (state) => {
-        state.candidatesLoading = true;
-        state.candidatesError = null;
-        state.batchCandidates = [];
-      })
-      .addCase(
-        fetchBatchCandidates.fulfilled,
-        (state, action: PayloadAction<any>) => {
-          state.candidatesLoading = false;
-          const data = action.payload;
-          if (Array.isArray(data)) {
-            state.batchCandidates = data;
-          } else if (data && Array.isArray(data.candidates)) {
-            state.batchCandidates = data.candidates;
-          } else {
-            state.batchCandidates = [];
-          }
-        }
-      )
-      .addCase(fetchBatchCandidates.rejected, (state, action) => {
-        state.candidatesLoading = false;
-        state.candidatesError = action.payload as string;
-      })
-      .addCase(createBatchCandidates.pending, (state) => {
-        state.candidatesLoading = true;
-        state.candidatesError = null;
-      })
-      .addCase(createBatchCandidates.fulfilled, (state) => {
-        state.candidatesLoading = false;
-      })
-      .addCase(createBatchCandidates.rejected, (state, action) => {
-        state.candidatesLoading = false;
-        state.candidatesError = action.payload as string;
-      })
+
       // Handle setBatchSlot status updates
       .addCase(setBatchSlot.pending, (state) => {
         state.updating = true;

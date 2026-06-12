@@ -31,6 +31,9 @@ const BATCH_HEADERS = [
   "THEORY TIME",
   "PRACTICAL TIME",
   "VIVA TIME",
+  "AUTH REQUIRED THEORY",
+  "AUTH REQUIRED PRACTICAL",
+  "AUTH REQUIRED VIVA",
 ] as const;
 
 const SECTION_HEADERS = ["BATCH NAME", "SECTION NAME", "TYPE"] as const;
@@ -130,6 +133,9 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
       "THEORY TIME": 30,
       "PRACTICAL TIME": jobRole.total_practical_marks > 0 ? 30 : 0,
       "VIVA TIME": jobRole.total_viva_marks > 0 ? 30 : 0,
+      "AUTH REQUIRED THEORY": "FALSE",
+      "AUTH REQUIRED PRACTICAL": "FALSE",
+      "AUTH REQUIRED VIVA": "FALSE",
     },
   ];
 
@@ -398,12 +404,26 @@ export function parseBatchesExcelFile(
     const practicalTime = numberValue(row["PRACTICAL TIME"]);
     const vivaTime = numberValue(row["VIVA TIME"]);
 
+    const parseBoolean = (val: unknown) => {
+      const s = stringValue(val).toUpperCase();
+      return s === "TRUE" || s === "1" || s === "YES";
+    };
+
     result.push({
       name,
       job_role_id: options.jobRoleId ?? 0,
       theory_time: theoryTime,
       practical_time: practicalTime,
       viva_time: vivaTime,
+      is_authorization_required_in_theory: parseBoolean(
+        row["AUTH REQUIRED THEORY"]
+      ),
+      is_authorization_required_in_practical: parseBoolean(
+        row["AUTH REQUIRED PRACTICAL"]
+      ),
+      is_authorization_required_in_viva: parseBoolean(
+        row["AUTH REQUIRED VIVA"]
+      ),
       sections,
     });
 
