@@ -1,12 +1,19 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { FiEye, FiEyeOff, FiShield, FiClock, FiCheckCircle } from "react-icons/fi";
+import {
+  FiEye,
+  FiEyeOff,
+  FiShield,
+  FiClock,
+  FiCheckCircle,
+} from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { loginCandidateAction } from "@/store/slices/auth-slice";
+import { encryptData } from "@/lib/crypto";
 
 export default function CandidateLoginPage() {
   const params = useParams();
@@ -18,7 +25,17 @@ export default function CandidateLoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const { isLoading } = useAppSelector((state) => state.auth);
+  const { isLoading, isAuthenticated, isInitialized, batch } = useAppSelector(
+    (state) => state.auth
+  );
+
+  // Redirect already-authenticated candidates away from login
+  useEffect(() => {
+    if (isInitialized && isAuthenticated && batch) {
+      const encrypted = encryptData(batch);
+      router.replace(`/batches/${batchId}/exam?data=${encrypted}`);
+    }
+  }, [isInitialized, isAuthenticated, batch, batchId, router]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -34,9 +51,13 @@ export default function CandidateLoginPage() {
 
       if (loginCandidateAction.fulfilled.match(resultAction)) {
         toast.success("Login successful! Preparing your exam…");
-        router.push(`/batches/${batchId}/exam`);
+        const batchData = resultAction.payload.batch;
+        const encrypted = encryptData(batchData);
+        router.replace(`/batches/${batchId}/exam?data=${encrypted}`);
       } else {
-        const errorMsg = resultAction.payload || "Login failed. Please check your credentials.";
+        const errorMsg =
+          resultAction.payload ||
+          "Login failed. Please check your credentials.";
         toast.error(errorMsg);
       }
     } catch (error: any) {
@@ -95,8 +116,8 @@ export default function CandidateLoginPage() {
             </h1>
 
             <p className="mt-5 max-w-md text-base leading-7 text-slate-500">
-              Enter your enrollment credentials to access your secure assessment.
-              Stay focused — your performance matters.
+              Enter your enrollment credentials to access your secure
+              assessment. Stay focused — your performance matters.
             </p>
 
             {/* Info pills */}
@@ -259,14 +280,16 @@ export default function CandidateLoginPage() {
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <FiShield className="h-3.5 w-3.5 text-indigo-400" />
                   <span>
-                    Your session is encrypted and monitored. Do not share your credentials.
+                    Your session is encrypted and monitored. Do not share your
+                    credentials.
                   </span>
                 </div>
               </div>
             </div>
 
             <p className="mt-4 text-center text-xs text-slate-400">
-              © {new Date().getFullYear()} Asses-Sir · Secure Assessment Platform
+              © {new Date().getFullYear()} Asses-Sir · Secure Assessment
+              Platform
             </p>
           </div>
         </div>

@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import Cookies from "js-cookie";
 
 const AUTH_COOKIE_KEY = "candidate_token";
+const BATCH_STORAGE_KEY = "candidate_exam_batch";
 
 export type CandidateSessionPayload = {
   enrollment_no?: string;
@@ -14,6 +15,7 @@ export type CandidateSessionPayload = {
 };
 
 type AuthState = {
+  batch: any | null;
   error: string | null;
   isAuthenticated: boolean;
   isInitialized: boolean;
@@ -23,6 +25,7 @@ type AuthState = {
 };
 
 const initialState: AuthState = {
+  batch: null,
   error: null,
   isAuthenticated: false,
   isInitialized: false,
@@ -56,14 +59,28 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
 
   if (!token || !session) {
     Cookies.remove(AUTH_COOKIE_KEY);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(BATCH_STORAGE_KEY);
+    }
     return {
+      batch: null,
       isAuthenticated: false,
       session: null,
       token: null
     };
   }
 
+  // Restore batch data from sessionStorage
+  let batch: any = null;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = sessionStorage.getItem(BATCH_STORAGE_KEY);
+      if (stored) batch = JSON.parse(stored);
+    } catch {}
+  }
+
   return {
+    batch,
     isAuthenticated: true,
     session,
     token
@@ -71,7 +88,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
 });
 
 export const loginCandidateAction = createAsyncThunk<
-  { session: CandidateSessionPayload | null; token: string },
+  { batch: any | null; session: CandidateSessionPayload | null; token: string },
   { batchId: string; enrollment_no: string; password: string },
   { rejectValue: string }
 >("auth/loginCandidate", async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
@@ -80,7 +97,9 @@ export const loginCandidateAction = createAsyncThunk<
       enrollment_no,
       password
     });
-    const token = response.data.token || response.data; // Handle both object and string response
+
+    const data = response.data;
+    const token = data.token || data; // Handle both object and string response
 
     if (typeof token !== "string") {
       throw new Error("Invalid token received from server");
@@ -89,7 +108,14 @@ export const loginCandidateAction = createAsyncThunk<
     Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
     const session = parseJwt(token);
 
+    // Persist batch details to sessionStorage
+    const batch = data.batch || null;
+    if (batch && typeof window !== "undefined") {
+      sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
+    }
+
     return {
+      batch,
       session,
       token
     };
@@ -105,6 +131,7 @@ export const logoutCandidateAction = createAsyncThunk("auth/logoutCandidate", as
   if (typeof window !== "undefined") {
     localStorage.removeItem("candidate_user");
     sessionStorage.removeItem("candidate_user");
+    sessionStorage.removeItem(BATCH_STORAGE_KEY);
   }
 });
 
@@ -129,6 +156,7 @@ const authSlice = createSlice({
       .addCase(initializeAuth.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isInitialized = true;
+        state.batch = action.payload.batch;
         state.isAuthenticated = action.payload.isAuthenticated;
         state.session = action.payload.session;
         state.token = action.payload.token;
@@ -136,6 +164,7 @@ const authSlice = createSlice({
       .addCase(initializeAuth.rejected, (state) => {
         state.isLoading = false;
         state.isInitialized = true;
+        state.batch = null;
         state.isAuthenticated = false;
         state.session = null;
         state.token = null;
@@ -147,6 +176,7 @@ const authSlice = createSlice({
       .addCase(loginCandidateAction.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isAuthenticated = true;
+        state.batch = action.payload.batch;
         state.session = action.payload.session;
         state.token = action.payload.token;
       })
@@ -156,6 +186,7 @@ const authSlice = createSlice({
         state.error = action.payload ?? "Unable to sign in right now.";
       })
       .addCase(logoutCandidateAction.fulfilled, (state) => {
+        state.batch = null;
         state.error = null;
         state.isAuthenticated = false;
         state.session = null;
