@@ -2,8 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import {
   FiEye,
   FiEyeOff,
@@ -67,8 +66,6 @@ export default function CandidateLoginPage() {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={3000} />
-
       <main className="relative flex min-h-screen flex-col overflow-hidden">
         {/* ── Animated background ─────────────────────────── */}
         <div className="pointer-events-none absolute inset-0 -z-10">

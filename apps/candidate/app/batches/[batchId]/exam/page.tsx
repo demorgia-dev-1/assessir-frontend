@@ -2,8 +2,7 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import {
   FiBookOpen,
   FiClock,
@@ -20,7 +19,7 @@ import {
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { logoutCandidateAction } from "@/store/slices/auth-slice";
-import { decryptData } from "@/lib/crypto";
+import { decryptData, encryptData } from "@/lib/crypto";
 import api from "@/lib/api";
 
 /* ── Types ──────────────────────────────────────────── */
@@ -85,6 +84,9 @@ function ExamDashboardInner() {
   const searchParams = useSearchParams();
   const batchId = params.batchId as string;
   const dispatch = useAppDispatch();
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const { isAuthenticated, isInitialized, session } = useAppSelector(
     (state) => state.auth
@@ -155,9 +157,14 @@ function ExamDashboardInner() {
     try {
       await api.post(`/batches/${batchId}/exam/start?testType=${testType}`);
       toast.success(`${selectedTest.label} started successfully!`);
-      
-      // Navigate to the test-taking page
-      router.push(`/batches/${batchId}/exam/test?type=${testType}`);
+
+      const testData = batch![selectedTest.key];
+      const encryptedTestData = encryptData({
+        testId: testData!.id,
+        sections: testData!.sections,
+        timeInMinutes: testData!.time_in_minutes,
+      });
+      router.push(`/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`);
     } catch (error: any) {
       console.error(error);
       const errMsg = error.response?.data?.error || error.response?.data?.message || "Failed to start the test. Please try again.";
@@ -192,7 +199,7 @@ function ExamDashboardInner() {
   }, [batch]);
 
   // Loading state
-  if (!isInitialized || !batch) {
+  if (!mounted || !isInitialized || !batch) {
     return (
       <main className="flex min-h-screen items-center justify-center px-6">
         <div className="rounded-full border border-white/70 bg-white/80 px-6 py-3 text-sm font-medium text-slate-700 shadow-lg backdrop-blur-xl">
@@ -210,8 +217,6 @@ function ExamDashboardInner() {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={3000} />
-
       <main className="relative min-h-screen overflow-hidden">
         {/* ── Animated background ─────────────────────────── */}
         <div className="pointer-events-none absolute inset-0 -z-10">

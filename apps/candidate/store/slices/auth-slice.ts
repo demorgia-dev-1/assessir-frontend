@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import api from "@/lib/api";
 import Cookies from "js-cookie";
 
-const AUTH_COOKIE_KEY = "candidate_token";
+const AUTH_COOKIE_KEY = "candidate_access_token";
 const BATCH_STORAGE_KEY = "candidate_exam_batch";
 
 export type CandidateSessionPayload = {
@@ -88,7 +88,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
 });
 
 export const loginCandidateAction = createAsyncThunk<
-  { batch: any | null; session: CandidateSessionPayload | null; token: string },
+  { batch: any | null; session: CandidateSessionPayload | null; token: string | null },
   { batchId: string; enrollment_no: string; password: string },
   { rejectValue: string }
 >("auth/loginCandidate", async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
@@ -98,21 +98,14 @@ export const loginCandidateAction = createAsyncThunk<
       password
     });
 
-    const data = response.data;
-    const token = data.token || data; // Handle both object and string response
+    const batch = response.data.data ?? response.data;
 
-    if (typeof token !== "string") {
-      throw new Error("Invalid token received from server");
-    }
-
-    Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
-    const session = parseJwt(token);
-
-    // Persist batch details to sessionStorage
-    const batch = data.batch || null;
     if (batch && typeof window !== "undefined") {
       sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
     }
+
+    const token = Cookies.get(AUTH_COOKIE_KEY) || null;
+    const session = token ? parseJwt(token) : null;
 
     return {
       batch,
@@ -144,7 +137,7 @@ const authSlice = createSlice({
     },
     setSession(state, action: PayloadAction<CandidateSessionPayload | null>) {
       state.session = action.payload;
-      state.isAuthenticated = Boolean(action.payload && state.token);
+      state.isAuthenticated = Boolean(action.payload);
     }
   },
   extraReducers: (builder) => {
