@@ -128,8 +128,7 @@ function ExamTestInner() {
     setIsLoadingQuestion(true);
     api
       .get(
-        `/batches/${batchId}/exam/questions/${ref.questionId}
-        ?testId=${testInfo.testId}&sectionId=${ref.sectionId}`
+        `/batches/${batchId}/exam/questions/${ref.questionId}?testId=${testInfo.testId}&sectionId=${ref.sectionId}`
       )
       .then((res) => {
         const question = res.data.question ?? res.data;
