@@ -14,6 +14,7 @@ import {
   FiChevronDown,
   FiEye,
   FiEyeOff,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import api from "@/lib/api";
@@ -21,6 +22,7 @@ import {
   fetchCandidates,
   createCandidates,
   deleteCandidatesFromBatch,
+  resetCandidate,
   clearCandidatesError,
   clearCandidates,
   setSelectedBatchId,
@@ -44,6 +46,7 @@ export default function CandidatesPage() {
     loading,
     creating,
     deleting,
+    resetting,
     error,
     selectedBatchId,
   } = useAppSelector((state) => state.candidates);
@@ -68,6 +71,7 @@ export default function CandidatesPage() {
     new Set()
   );
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [resetCandidateId, setResetCandidateId] = useState<string | number | null>(null);
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 1000 }));
@@ -256,6 +260,19 @@ export default function CandidatesPage() {
     }
   };
 
+  const handleConfirmReset = async () => {
+    if (!selectedBatchId || !resetCandidateId) return;
+
+    const actionResult = await dispatch(
+      resetCandidate({ batchId: selectedBatchId, candidateId: resetCandidateId })
+    );
+
+    if (resetCandidate.fulfilled.match(actionResult)) {
+      setResetCandidateId(null);
+      dispatch(fetchCandidates(selectedBatchId));
+    }
+  };
+
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6">
       {/* Header */}
@@ -425,6 +442,9 @@ export default function CandidatesPage() {
                       <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                         Password
                       </th>
+                      <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -479,6 +499,18 @@ export default function CandidatesPage() {
                                 )}
                               </button>
                             </div>
+                          </td>
+                          <td className="px-5 py-3 text-xs" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setResetCandidateId(cand.id!)}
+                              disabled={resetting}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+                              title="Reset Candidate"
+                            >
+                              <FiRefreshCw className="h-3.5 w-3.5" />
+                              Reset
+                            </button>
                           </td>
                         </tr>
                       );
@@ -856,6 +888,52 @@ export default function CandidatesPage() {
                         ? `${selectedIds.size} Candidates`
                         : "Candidate"
                     }`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset candidate confirmation modal */}
+      {resetCandidateId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay animate-in fade-in duration-200">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
+                <FiAlertTriangle className="h-6 w-6 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Reset Candidate
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Please Confirm
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Are you sure you want to reset candidate{" "}
+              <span className="font-semibold text-slate-950">
+                {candidates.find((c) => c.id === resetCandidateId)?.enrollment_no || resetCandidateId}
+              </span>
+              ? This will clear their exam progress.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setResetCandidateId(null)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+                disabled={resetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                className="flex-1 rounded-2xl bg-amber-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 transition hover:bg-amber-600 disabled:opacity-50 active:scale-[0.98]"
+                disabled={resetting}
+              >
+                {resetting ? "Resetting…" : "Reset Candidate"}
               </button>
             </div>
           </div>

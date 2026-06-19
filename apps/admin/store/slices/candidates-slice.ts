@@ -21,12 +21,18 @@ export type DeleteCandidatesInput = {
   candidateIds: Array<string | number>;
 };
 
+export type ResetCandidateInput = {
+  batchId: string | number;
+  candidateId: string | number;
+};
+
 interface CandidatesState {
   candidates: Candidate[];
   totalCandidates: number;
   loading: boolean;
   creating: boolean;
   deleting: boolean;
+  resetting: boolean;
   error: string | null;
   selectedBatchId: string | number | null;
 }
@@ -37,6 +43,7 @@ const initialState: CandidatesState = {
   loading: false,
   creating: false,
   deleting: false,
+  resetting: false,
   error: null,
   selectedBatchId: null,
 };
@@ -154,6 +161,26 @@ export const deleteCandidatesFromBatch = createAsyncThunk(
   }
 );
 
+export const resetCandidate = createAsyncThunk(
+  "candidates/resetCandidate",
+  async (
+    { batchId, candidateId }: ResetCandidateInput,
+    { rejectWithValue }
+  ) => {
+    try {
+      const response = await api.post(
+        `/batches/${batchId}/candidates/${candidateId}/reset`
+      );
+      toast.success("Candidate reset successfully.");
+      return { candidateId, data: response.data };
+    } catch (error: any) {
+      const message = getErrorMessage(error, "Failed to reset candidate");
+      toast.error(message);
+      return rejectWithValue(message);
+    }
+  }
+);
+
 const candidatesSlice = createSlice({
   name: "candidates",
   initialState,
@@ -236,6 +263,19 @@ const candidatesSlice = createSlice({
       )
       .addCase(deleteCandidatesFromBatch.rejected, (state, action) => {
         state.deleting = false;
+        state.error = action.payload as string;
+      })
+
+      // resetCandidate
+      .addCase(resetCandidate.pending, (state) => {
+        state.resetting = true;
+        state.error = null;
+      })
+      .addCase(resetCandidate.fulfilled, (state) => {
+        state.resetting = false;
+      })
+      .addCase(resetCandidate.rejected, (state, action) => {
+        state.resetting = false;
         state.error = action.payload as string;
       });
   },
