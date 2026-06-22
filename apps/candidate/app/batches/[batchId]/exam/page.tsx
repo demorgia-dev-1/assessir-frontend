@@ -145,7 +145,9 @@ function ExamDashboardInner() {
     const testType = selectedTest.key.replace("_test", ""); // theory, practical, viva
 
     try {
-      const res = await api.post(`/batches/${batchId}/exam/start?testType=${testType}`);
+      const res = await api.post(
+        `/batches/${batchId}/exam/start?testType=${testType}`
+      );
 
       if (res.data?.error) {
         toast.error(res.data.error);
@@ -270,10 +272,6 @@ function ExamDashboardInner() {
 
         {/* ── Main content ────────────────────────────────── */}
         <div className="mx-auto max-w-5xl px-6 pb-16 pt-8 sm:px-10">
-<<<<<<< HEAD
-
-=======
->>>>>>> d69ac40 (fixed login problem)
           {/* ── VIEW: Dashboard ─────────────────────────────── */}
           {view === "dashboard" && (
             <>
@@ -364,13 +362,9 @@ function ExamDashboardInner() {
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
                             {card.icon}
                           </div>
-<<<<<<< HEAD
-                          <h3 className="text-sm font-bold text-slate-900">{card.label}</h3>
-=======
                           <h3 className="text-sm font-bold text-slate-900">
                             {card.label}
                           </h3>
->>>>>>> d69ac40 (fixed login problem)
                         </div>
                       </div>
 
@@ -411,13 +405,9 @@ function ExamDashboardInner() {
                         </div>
 
                         <button
-<<<<<<< HEAD
-                          onClick={() => handleStartTestClick(card.key, card.label)}
-=======
                           onClick={() =>
                             handleStartTestClick(card.key, card.label)
                           }
->>>>>>> d69ac40 (fixed login problem)
                           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                           type="button"
                         >
@@ -463,18 +453,6 @@ function ExamDashboardInner() {
                 {/* Test details row */}
                 <div className="mb-8 grid grid-cols-3 gap-4 rounded-xl bg-blue-50/50 p-4">
                   <div className="text-center">
-<<<<<<< HEAD
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sections</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">{activeTest.sections?.length ?? 0}</p>
-                  </div>
-                  <div className="border-x border-blue-100 text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Questions</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">{activeQuestionCount}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Marks</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">{activeQuestionCount * 4}</p>
-=======
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       Sections
                     </p>
@@ -497,7 +475,6 @@ function ExamDashboardInner() {
                     <p className="mt-1 text-lg font-bold text-slate-900">
                       {activeQuestionCount * 4}
                     </p>
->>>>>>> d69ac40 (fixed login problem)
                   </div>
                 </div>
 
@@ -552,14 +529,10 @@ function ExamDashboardInner() {
 
                 {/* Consent checkbox */}
                 <div className="mb-8 rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
-<<<<<<< HEAD
-                  <label htmlFor="consent" className="flex cursor-pointer gap-3.5">
-=======
                   <label
                     htmlFor="consent"
                     className="flex cursor-pointer gap-3.5"
                   >
->>>>>>> d69ac40 (fixed login problem)
                     <input
                       id="consent"
                       type="checkbox"
@@ -568,9 +541,6 @@ function ExamDashboardInner() {
                       className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
                     <div className="text-xs leading-relaxed text-slate-600 sm:text-sm">
-<<<<<<< HEAD
-                      <strong className="text-slate-800">Candidate Declaration & Consent:</strong> I declare that I am the registered candidate and will complete this exam on my own without using helper books, chats, search engines, or AI tools. I consent to automatic activity logging and webcam proctoring monitoring.
-=======
                       <strong className="text-slate-800">
                         Candidate Declaration & Consent:
                       </strong>{" "}
@@ -582,7 +552,6 @@ function ExamDashboardInner() {
                       concessions in bus, train or air etc, scholarships,
                       internships, apprenticeships and other schemes of the
                       government."
->>>>>>> d69ac40 (fixed login problem)
                     </div>
                   </label>
                 </div>

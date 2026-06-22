@@ -23,6 +23,8 @@ api.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     if (status === 401) {
+      const hasErrorMessage = error?.response?.data?.error || error?.response?.data?.message;
+
       try {
         Cookies.remove(AUTH_COOKIE_KEY);
         if (typeof window !== "undefined") {
@@ -31,8 +33,7 @@ api.interceptors.response.use(
         }
       } catch {}
 
-      // Redirect to batch-specific login if path matches
-      if (typeof window !== "undefined") {
+      if (!hasErrorMessage && typeof window !== "undefined") {
         const match = window.location.pathname.match(/\/batches\/([^/]+)\/exam/);
         if (match && match[1]) {
           const batchId = match[1];
