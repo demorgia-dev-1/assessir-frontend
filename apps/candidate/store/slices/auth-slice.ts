@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import api from "@/lib/api";
 import Cookies from "js-cookie";
 
-const AUTH_COOKIE_KEY = "candidate_access_token";
+const AUTH_COOKIE_KEY = "candidate_token";
 const BATCH_STORAGE_KEY = "candidate_exam_batch";
 
 export type CandidateSessionPayload = {
@@ -31,7 +31,7 @@ const initialState: AuthState = {
   isInitialized: false,
   isLoading: false,
   session: null,
-  token: null
+  token: null,
 };
 
 function decodeBase64Url(value: string) {
@@ -66,7 +66,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
       batch: null,
       isAuthenticated: false,
       session: null,
-      token: null
+      token: null,
     };
   }
 
@@ -83,50 +83,66 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
     batch,
     isAuthenticated: true,
     session,
-    token
+    token,
   };
 });
 
 export const loginCandidateAction = createAsyncThunk<
-  { batch: any | null; session: CandidateSessionPayload | null; token: string | null },
+  { batch: any | null; session: CandidateSessionPayload | null; token: string },
   { batchId: string; enrollment_no: string; password: string },
   { rejectValue: string }
->("auth/loginCandidate", async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
-  try {
-    const response = await api.post(`/batches/${batchId}/exam/login`, {
-      enrollment_no,
-      password
-    });
+>(
+  "auth/loginCandidate",
+  async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
+    try {
+      const response = await api.post(`/batches/${batchId}/exam/login`, {
+        enrollment_no,
+        password,
+      });
 
-    const batch = response.data.data ?? response.data;
+      const data = response.data;
+      const token = data.token || data; // Handle both object and string response
 
-    if (batch && typeof window !== "undefined") {
-      sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
+      if (typeof token !== "string") {
+        throw new Error("Invalid token received from server");
+      }
+
+      Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
+      const session = parseJwt(token);
+
+      // Persist batch details to sessionStorage
+      const batch = data.batch || null;
+      if (batch && typeof window !== "undefined") {
+        sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
+      }
+
+      return {
+        batch,
+        session,
+        token,
+      };
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          "Unable to sign in right now."
+      );
     }
-
-    const token = Cookies.get(AUTH_COOKIE_KEY) || null;
-    const session = token ? parseJwt(token) : null;
-
-    return {
-      batch,
-      session,
-      token
-    };
-  } catch (error: any) {
-    return rejectWithValue(
-      error.response?.data?.error || error.response?.data?.message || error.message || "Unable to sign in right now."
-    );
   }
-});
+);
 
-export const logoutCandidateAction = createAsyncThunk("auth/logoutCandidate", async () => {
-  Cookies.remove(AUTH_COOKIE_KEY);
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("candidate_user");
-    sessionStorage.removeItem("candidate_user");
-    sessionStorage.removeItem(BATCH_STORAGE_KEY);
+export const logoutCandidateAction = createAsyncThunk(
+  "auth/logoutCandidate",
+  async () => {
+    Cookies.remove(AUTH_COOKIE_KEY);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("candidate_user");
+      sessionStorage.removeItem("candidate_user");
+      sessionStorage.removeItem(BATCH_STORAGE_KEY);
+    }
   }
-});
+);
 
 const authSlice = createSlice({
   name: "auth",
@@ -137,8 +153,8 @@ const authSlice = createSlice({
     },
     setSession(state, action: PayloadAction<CandidateSessionPayload | null>) {
       state.session = action.payload;
-      state.isAuthenticated = Boolean(action.payload);
-    }
+      state.isAuthenticated = Boolean(action.payload && state.token);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -185,7 +201,7 @@ const authSlice = createSlice({
         state.session = null;
         state.token = null;
       });
-  }
+  },
 });
 
 export const { clearAuthError, setSession } = authSlice.actions;

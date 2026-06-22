@@ -88,7 +88,9 @@ function ExamDashboardInner() {
   }, [searchParams]);
 
   // View state management
-  const [view, setView] = useState<"dashboard" | "instructions" | "countdown">("dashboard");
+  const [view, setView] = useState<"dashboard" | "instructions" | "countdown">(
+    "dashboard"
+  );
   const [selectedTest, setSelectedTest] = useState<{
     key: "theory_test" | "practical_test" | "viva_test";
     label: string;
@@ -97,14 +99,12 @@ function ExamDashboardInner() {
   const [countdown, setCountdown] = useState(30);
   const [isStartingApi, setIsStartingApi] = useState(false);
 
-  // Auth guard
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
       router.replace(`/batches/${batchId}/exam/login`);
     }
   }, [isInitialized, isAuthenticated, batchId, router]);
 
-  // No data guard
   useEffect(() => {
     if (isInitialized && isAuthenticated && !batch) {
       toast.error("Invalid exam data. Please log in again.");
@@ -130,7 +130,10 @@ function ExamDashboardInner() {
     router.replace(`/batches/${batchId}/exam/login`);
   };
 
-  const handleStartTestClick = (key: "theory_test" | "practical_test" | "viva_test", label: string) => {
+  const handleStartTestClick = (
+    key: "theory_test" | "practical_test" | "viva_test",
+    label: string
+  ) => {
     setSelectedTest({ key, label });
     setConsentChecked(false);
     setView("instructions");
@@ -142,7 +145,14 @@ function ExamDashboardInner() {
     const testType = selectedTest.key.replace("_test", ""); // theory, practical, viva
 
     try {
-      await api.post(`/batches/${batchId}/exam/start?testType=${testType}`);
+      const res = await api.post(`/batches/${batchId}/exam/start?testType=${testType}`);
+
+      if (res.data?.error) {
+        toast.error(res.data.error);
+        setView("instructions");
+        return;
+      }
+
       toast.success(`${selectedTest.label} started successfully!`);
 
       const testData = batch![selectedTest.key];
@@ -151,10 +161,15 @@ function ExamDashboardInner() {
         sections: testData!.sections,
         timeInMinutes: testData!.time_in_minutes,
       });
-      router.push(`/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`);
+      router.push(
+        `/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`
+      );
     } catch (error: any) {
       console.error(error);
-      const errMsg = error.response?.data?.error || error.response?.data?.message || "Failed to start the test. Please try again.";
+      const errMsg =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        "Failed to start the test. Please try again.";
       toast.error(errMsg);
       setView("instructions");
     } finally {
@@ -175,14 +190,25 @@ function ExamDashboardInner() {
   const totalQuestions = useMemo(() => {
     if (!batch) return 0;
     const count = (test: TestData | null) =>
-      test?.sections?.reduce((sum, s) => sum + (s.question_ids?.length ?? 0), 0) ?? 0;
-    return count(batch.theory_test) + count(batch.practical_test) + count(batch.viva_test);
+      test?.sections?.reduce(
+        (sum, s) => sum + (s.question_ids?.length ?? 0),
+        0
+      ) ?? 0;
+    return (
+      count(batch.theory_test) +
+      count(batch.practical_test) +
+      count(batch.viva_test)
+    );
   }, [batch]);
 
   const totalSections = useMemo(() => {
     if (!batch) return 0;
     const count = (test: TestData | null) => test?.sections?.length ?? 0;
-    return count(batch.theory_test) + count(batch.practical_test) + count(batch.viva_test);
+    return (
+      count(batch.theory_test) +
+      count(batch.practical_test) +
+      count(batch.viva_test)
+    );
   }, [batch]);
 
   // Loading state
@@ -199,7 +225,10 @@ function ExamDashboardInner() {
   // Active test configurations
   const activeTest = selectedTest ? batch[selectedTest.key] : null;
   const activeQuestionCount = activeTest
-    ? activeTest.sections?.reduce((sum, s) => sum + (s.question_ids?.length ?? 0), 0) ?? 0
+    ? activeTest.sections?.reduce(
+        (sum, s) => sum + (s.question_ids?.length ?? 0),
+        0
+      ) ?? 0
     : 0;
 
   return (
@@ -241,7 +270,10 @@ function ExamDashboardInner() {
 
         {/* ── Main content ────────────────────────────────── */}
         <div className="mx-auto max-w-5xl px-6 pb-16 pt-8 sm:px-10">
+<<<<<<< HEAD
 
+=======
+>>>>>>> d69ac40 (fixed login problem)
           {/* ── VIEW: Dashboard ─────────────────────────────── */}
           {view === "dashboard" && (
             <>
@@ -255,7 +287,10 @@ function ExamDashboardInner() {
                 </h1>
                 {session?.enrollment_no && (
                   <p className="mt-2 text-sm text-slate-500">
-                    Enrollment: <span className="font-semibold text-slate-700">{session.enrollment_no}</span>
+                    Enrollment:{" "}
+                    <span className="font-semibold text-slate-700">
+                      {session.enrollment_no}
+                    </span>
                   </p>
                 )}
               </div>
@@ -267,8 +302,12 @@ function ExamDashboardInner() {
                     <FiClock className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-900">{totalTime}</p>
-                    <p className="text-xs font-medium text-slate-500">Total Minutes</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {totalTime}
+                    </p>
+                    <p className="text-xs font-medium text-slate-500">
+                      Total Minutes
+                    </p>
                   </div>
                 </div>
 
@@ -277,8 +316,12 @@ function ExamDashboardInner() {
                     <FiHash className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-900">{totalQuestions}</p>
-                    <p className="text-xs font-medium text-slate-500">Total Questions</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {totalQuestions}
+                    </p>
+                    <p className="text-xs font-medium text-slate-500">
+                      Total Questions
+                    </p>
                   </div>
                 </div>
 
@@ -287,8 +330,12 @@ function ExamDashboardInner() {
                     <FiLayers className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-900">{totalSections}</p>
-                    <p className="text-xs font-medium text-slate-500">Total Sections</p>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {totalSections}
+                    </p>
+                    <p className="text-xs font-medium text-slate-500">
+                      Total Sections
+                    </p>
                   </div>
                 </div>
               </div>
@@ -299,10 +346,12 @@ function ExamDashboardInner() {
                   const test = batch[card.key];
                   if (!test) return null;
 
-                  const questionCount = test.sections?.reduce(
-                    (sum: number, s: TestSection) => sum + (s.question_ids?.length ?? 0),
-                    0
-                  ) ?? 0;
+                  const questionCount =
+                    test.sections?.reduce(
+                      (sum: number, s: TestSection) =>
+                        sum + (s.question_ids?.length ?? 0),
+                      0
+                    ) ?? 0;
 
                   return (
                     <div
@@ -315,7 +364,13 @@ function ExamDashboardInner() {
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
                             {card.icon}
                           </div>
+<<<<<<< HEAD
                           <h3 className="text-sm font-bold text-slate-900">{card.label}</h3>
+=======
+                          <h3 className="text-sm font-bold text-slate-900">
+                            {card.label}
+                          </h3>
+>>>>>>> d69ac40 (fixed login problem)
                         </div>
                       </div>
 
@@ -323,7 +378,9 @@ function ExamDashboardInner() {
                       <div className="flex flex-1 flex-col px-6 py-5">
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-slate-500">Duration</span>
+                            <span className="text-sm text-slate-500">
+                              Duration
+                            </span>
                             <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
                               <FiClock className="h-3.5 w-3.5 text-blue-400" />
                               {test.time_in_minutes} min
@@ -333,7 +390,9 @@ function ExamDashboardInner() {
                           <div className="h-px bg-slate-100" />
 
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-slate-500">Questions</span>
+                            <span className="text-sm text-slate-500">
+                              Questions
+                            </span>
                             <span className="text-sm font-semibold text-slate-900">
                               {questionCount}
                             </span>
@@ -342,7 +401,9 @@ function ExamDashboardInner() {
                           <div className="h-px bg-slate-100" />
 
                           <div className="flex items-center justify-between">
-                            <span className="text-sm text-slate-500">Sections</span>
+                            <span className="text-sm text-slate-500">
+                              Sections
+                            </span>
                             <span className="text-sm font-semibold text-slate-900">
                               {test.sections?.length ?? 0}
                             </span>
@@ -350,7 +411,13 @@ function ExamDashboardInner() {
                         </div>
 
                         <button
+<<<<<<< HEAD
                           onClick={() => handleStartTestClick(card.key, card.label)}
+=======
+                          onClick={() =>
+                            handleStartTestClick(card.key, card.label)
+                          }
+>>>>>>> d69ac40 (fixed login problem)
                           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                           type="button"
                         >
@@ -396,6 +463,7 @@ function ExamDashboardInner() {
                 {/* Test details row */}
                 <div className="mb-8 grid grid-cols-3 gap-4 rounded-xl bg-blue-50/50 p-4">
                   <div className="text-center">
+<<<<<<< HEAD
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sections</p>
                     <p className="mt-1 text-lg font-bold text-slate-900">{activeTest.sections?.length ?? 0}</p>
                   </div>
@@ -406,6 +474,30 @@ function ExamDashboardInner() {
                   <div className="text-center">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Marks</p>
                     <p className="mt-1 text-lg font-bold text-slate-900">{activeQuestionCount * 4}</p>
+=======
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Sections
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">
+                      {activeTest.sections?.length ?? 0}
+                    </p>
+                  </div>
+                  <div className="border-x border-blue-100 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Questions
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">
+                      {activeQuestionCount}
+                    </p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Total Marks
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">
+                      {activeQuestionCount * 4}
+                    </p>
+>>>>>>> d69ac40 (fixed login problem)
                   </div>
                 </div>
 
@@ -420,32 +512,54 @@ function ExamDashboardInner() {
                       <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
                         <FiCheck className="h-3 w-3" />
                       </div>
-                      <span><strong>Browser Integrity:</strong> Do not refresh the page, switch tabs, or minimize the browser window. Tab switches are logged and may terminate your session.</span>
+                      <span>
+                        <strong>Browser Integrity:</strong> Do not refresh the
+                        page, switch tabs, or minimize the browser window. Tab
+                        switches are logged and may terminate your session.
+                      </span>
                     </li>
                     <li className="flex items-start gap-3">
                       <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
                         <FiCheck className="h-3 w-3" />
                       </div>
-                      <span><strong>Proctoring:</strong> Ensure your webcam remains active and your face is visible in the frame at all times (if webcam proctoring is enabled).</span>
+                      <span>
+                        <strong>Proctoring:</strong> Ensure your webcam remains
+                        active and your face is visible in the frame at all
+                        times (if webcam proctoring is enabled).
+                      </span>
                     </li>
                     <li className="flex items-start gap-3">
                       <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
                         <FiCheck className="h-3 w-3" />
                       </div>
-                      <span><strong>Timer:</strong> Once you begin, the timer starts ticking and cannot be paused or reset. It will submit automatically when time runs out.</span>
+                      <span>
+                        <strong>Timer:</strong> Once you begin, the timer starts
+                        ticking and cannot be paused or reset. It will submit
+                        automatically when time runs out.
+                      </span>
                     </li>
                     <li className="flex items-start gap-3">
                       <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
                         <FiCheck className="h-3 w-3" />
                       </div>
-                      <span><strong>Stable Connection:</strong> Ensure your internet connection remains stable. Do not log out or disconnect.</span>
+                      <span>
+                        <strong>Stable Connection:</strong> Ensure your internet
+                        connection remains stable. Do not log out or disconnect.
+                      </span>
                     </li>
                   </ul>
                 </div>
 
                 {/* Consent checkbox */}
                 <div className="mb-8 rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
+<<<<<<< HEAD
                   <label htmlFor="consent" className="flex cursor-pointer gap-3.5">
+=======
+                  <label
+                    htmlFor="consent"
+                    className="flex cursor-pointer gap-3.5"
+                  >
+>>>>>>> d69ac40 (fixed login problem)
                     <input
                       id="consent"
                       type="checkbox"
@@ -454,7 +568,21 @@ function ExamDashboardInner() {
                       className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
                     <div className="text-xs leading-relaxed text-slate-600 sm:text-sm">
+<<<<<<< HEAD
                       <strong className="text-slate-800">Candidate Declaration & Consent:</strong> I declare that I am the registered candidate and will complete this exam on my own without using helper books, chats, search engines, or AI tools. I consent to automatic activity logging and webcam proctoring monitoring.
+=======
+                      <strong className="text-slate-800">
+                        Candidate Declaration & Consent:
+                      </strong>{" "}
+                      "I hereby declare that I have taken consent of the
+                      respective student to capture his/her Aadhaar number for
+                      educational purposes like creating unique lifelong APAAR
+                      ID (formerly known as ABC ID), entrance tests, counselling
+                      for admissions, university exams, results, skilling,
+                      concessions in bus, train or air etc, scholarships,
+                      internships, apprenticeships and other schemes of the
+                      government."
+>>>>>>> d69ac40 (fixed login problem)
                     </div>
                   </label>
                 </div>
@@ -488,7 +616,8 @@ function ExamDashboardInner() {
                 </h2>
 
                 <p className="mt-2 text-sm text-slate-500">
-                  The {selectedTest.label} will begin automatically when the timer reaches zero.
+                  The {selectedTest.label} will begin automatically when the
+                  timer reaches zero.
                 </p>
 
                 {/* Countdown circle */}
@@ -508,7 +637,10 @@ function ExamDashboardInner() {
                 <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-xs leading-relaxed text-amber-800">
                   <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                   <div>
-                    <strong>Proctoring Notice:</strong> Please adjust your seat. Sit upright and make sure your face is clearly lit. Ensure your browser is in fullscreen. Closing this window or switching tabs will cancel the exam start.
+                    <strong>Proctoring Notice:</strong> Please adjust your seat.
+                    Sit upright and make sure your face is clearly lit. Ensure
+                    your browser is in fullscreen. Closing this window or
+                    switching tabs will cancel the exam start.
                   </div>
                 </div>
 
@@ -521,9 +653,24 @@ function ExamDashboardInner() {
                   >
                     {isStartingApi ? (
                       <span className="flex items-center gap-2">
-                        <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <svg
+                          className="h-4 w-4 animate-spin text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
                         </svg>
                         Launching Secure Exam…
                       </span>
@@ -554,7 +701,8 @@ function ExamDashboardInner() {
           <div className="mt-10 flex items-center justify-center gap-2 text-xs text-slate-400">
             <FiShield className="h-3.5 w-3.5" />
             <span>
-              Your session is encrypted and monitored. Do not share your screen or credentials.
+              Your session is encrypted and monitored. Do not share your screen
+              or credentials.
             </span>
           </div>
         </div>

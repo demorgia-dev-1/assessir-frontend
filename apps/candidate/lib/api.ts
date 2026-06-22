@@ -1,7 +1,7 @@
 import axios from "axios";
 import Cookies from "js-cookie";
 
-const AUTH_COOKIE_KEY = "candidate_access_token";
+const AUTH_COOKIE_KEY = "candidate_token";
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000/api/v1",

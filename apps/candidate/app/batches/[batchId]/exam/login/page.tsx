@@ -1,8 +1,9 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
-import { toast } from "react-toastify";
+import { FormEvent, useState } from "react";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import {
   FiEye,
   FiEyeOff,
@@ -24,17 +25,7 @@ export default function CandidateLoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const { isLoading, isAuthenticated, isInitialized, batch } = useAppSelector(
-    (state) => state.auth
-  );
-
-  // Redirect already-authenticated candidates away from login
-  useEffect(() => {
-    if (isInitialized && isAuthenticated && batch) {
-      const encrypted = encryptData(batch);
-      router.replace(`/batches/${batchId}/exam?data=${encrypted}`);
-    }
-  }, [isInitialized, isAuthenticated, batch, batchId, router]);
+  const { isLoading } = useAppSelector((state) => state.auth);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -50,9 +41,8 @@ export default function CandidateLoginPage() {
 
       if (loginCandidateAction.fulfilled.match(resultAction)) {
         toast.success("Login successful! Preparing your exam…");
-        const batchData = resultAction.payload.batch;
-        const encrypted = encryptData(batchData);
-        router.replace(`/batches/${batchId}/exam?data=${encrypted}`);
+        const encrypted = encryptData(resultAction.payload.batch);
+        router.push(`/batches/${batchId}/exam?data=${encrypted}`);
       } else {
         const errorMsg =
           resultAction.payload ||
@@ -66,6 +56,8 @@ export default function CandidateLoginPage() {
 
   return (
     <>
+      <ToastContainer position="top-right" autoClose={3000} />
+
       <main className="relative flex min-h-screen flex-col overflow-hidden">
         {/* ── Animated background ─────────────────────────── */}
         <div className="pointer-events-none absolute inset-0 -z-10">
