@@ -44,6 +44,12 @@ export type BatchPayload = {
   is_authorization_required_in_theory: boolean;
   is_authorization_required_in_practical: boolean;
   is_authorization_required_in_viva: boolean;
+  is_onboarding_selfie_required_theory: boolean;
+  is_random_evidence_required_theory: boolean;
+  is_onboarding_selfie_required_practical: boolean;
+  is_random_evidence_required_practical: boolean;
+  is_onboarding_selfie_required_viva: boolean;
+  is_random_evidence_required_viva: boolean;
   sections: BatchSectionPayload[];
 };
 
@@ -58,6 +64,12 @@ export type Batch = Partial<BatchPayload> & {
   is_authorization_required_in_theory?: boolean;
   is_authorization_required_in_practical?: boolean;
   is_authorization_required_in_viva?: boolean;
+  is_onboarding_selfie_required_theory?: boolean;
+  is_random_evidence_required_theory?: boolean;
+  is_onboarding_selfie_required_practical?: boolean;
+  is_random_evidence_required_practical?: boolean;
+  is_onboarding_selfie_required_viva?: boolean;
+  is_random_evidence_required_viva?: boolean;
   created_at?: string;
   updated_at?: string;
 };

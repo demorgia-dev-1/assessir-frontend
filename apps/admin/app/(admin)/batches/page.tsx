@@ -101,6 +101,12 @@ type BatchFormState = {
   is_authorization_required_in_theory: boolean;
   is_authorization_required_in_practical: boolean;
   is_authorization_required_in_viva: boolean;
+  is_onboarding_selfie_required_theory: boolean;
+  is_random_evidence_required_theory: boolean;
+  is_onboarding_selfie_required_practical: boolean;
+  is_random_evidence_required_practical: boolean;
+  is_onboarding_selfie_required_viva: boolean;
+  is_random_evidence_required_viva: boolean;
   sections: SectionForm[];
 };
 
@@ -154,6 +160,12 @@ function createEmptyForm(): BatchFormState {
     is_authorization_required_in_theory: false,
     is_authorization_required_in_practical: false,
     is_authorization_required_in_viva: false,
+    is_onboarding_selfie_required_theory: false,
+    is_random_evidence_required_theory: false,
+    is_onboarding_selfie_required_practical: false,
+    is_random_evidence_required_practical: false,
+    is_onboarding_selfie_required_viva: false,
+    is_random_evidence_required_viva: false,
     sections: SECTION_TYPES.map(createSection),
   };
 }
@@ -215,6 +227,18 @@ function normalizeBatchToForm(batch: Batch): BatchFormState {
       batch.is_authorization_required_in_practical ?? false,
     is_authorization_required_in_viva:
       batch.is_authorization_required_in_viva ?? false,
+    is_onboarding_selfie_required_theory:
+      batch.is_onboarding_selfie_required_theory ?? false,
+    is_random_evidence_required_theory:
+      batch.is_random_evidence_required_theory ?? false,
+    is_onboarding_selfie_required_practical:
+      batch.is_onboarding_selfie_required_practical ?? false,
+    is_random_evidence_required_practical:
+      batch.is_random_evidence_required_practical ?? false,
+    is_onboarding_selfie_required_viva:
+      batch.is_onboarding_selfie_required_viva ?? false,
+    is_random_evidence_required_viva:
+      batch.is_random_evidence_required_viva ?? false,
     sections: batch.sections?.length
       ? batch.sections.map((section) => ({
           name: section.name,
@@ -300,6 +324,18 @@ function buildPayload(form: BatchFormState): BatchPayload | null {
     is_authorization_required_in_practical:
       form.is_authorization_required_in_practical,
     is_authorization_required_in_viva: form.is_authorization_required_in_viva,
+    is_onboarding_selfie_required_theory:
+      form.is_onboarding_selfie_required_theory,
+    is_random_evidence_required_theory:
+      form.is_random_evidence_required_theory,
+    is_onboarding_selfie_required_practical:
+      form.is_onboarding_selfie_required_practical,
+    is_random_evidence_required_practical:
+      form.is_random_evidence_required_practical,
+    is_onboarding_selfie_required_viva:
+      form.is_onboarding_selfie_required_viva,
+    is_random_evidence_required_viva:
+      form.is_random_evidence_required_viva,
     sections,
   };
 }
@@ -1365,6 +1401,104 @@ export default function BatchesPage() {
                         </span>
                       </label>
                     ))}
+                </div>
+              </div>
+
+              {/* Onboarding Selfie toggles */}
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Onboarding Selfie Required
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {(
+                    [
+                      {
+                        key: "is_onboarding_selfie_required_theory" as const,
+                        label: "Theory",
+                      },
+                      {
+                        key: "is_onboarding_selfie_required_practical" as const,
+                        label: "Practical",
+                      },
+                      {
+                        key: "is_onboarding_selfie_required_viva" as const,
+                        label: "Viva",
+                      },
+                    ] as const
+                  ).map(({ key, label }) => (
+                    <label
+                      key={key}
+                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={form[key]}
+                        onClick={() => setFormField(key, !form[key])}
+                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                          form[key] ? "bg-slate-950" : "bg-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                            form[key] ? "translate-x-4" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Random Evidence toggles */}
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Random Evidence Required
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {(
+                    [
+                      {
+                        key: "is_random_evidence_required_theory" as const,
+                        label: "Theory",
+                      },
+                      {
+                        key: "is_random_evidence_required_practical" as const,
+                        label: "Practical",
+                      },
+                      {
+                        key: "is_random_evidence_required_viva" as const,
+                        label: "Viva",
+                      },
+                    ] as const
+                  ).map(({ key, label }) => (
+                    <label
+                      key={key}
+                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
+                    >
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={form[key]}
+                        onClick={() => setFormField(key, !form[key])}
+                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                          form[key] ? "bg-slate-950" : "bg-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                            form[key] ? "translate-x-4" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-sm font-semibold text-slate-700">
+                        {label}
+                      </span>
+                    </label>
+                  ))}
                 </div>
               </div>
 

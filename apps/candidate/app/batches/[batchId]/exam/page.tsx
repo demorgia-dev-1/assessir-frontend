@@ -1,14 +1,16 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import {
   FiBookOpen,
+  FiCamera,
   FiClock,
   FiCode,
   FiLogOut,
   FiMic,
+  FiRefreshCw,
   FiShield,
   FiArrowRight,
   FiLayers,
@@ -32,6 +34,8 @@ interface TestData {
   id: number;
   time_in_minutes: number;
   sections: TestSection[];
+  is_onboarding_selfie_required?: boolean;
+  is_random_evidence_required?: boolean;
 }
 
 interface BatchData {
@@ -88,9 +92,9 @@ function ExamDashboardInner() {
   }, [searchParams]);
 
   // View state management
-  const [view, setView] = useState<"dashboard" | "instructions" | "countdown">(
-    "dashboard"
-  );
+  const [view, setView] = useState<
+    "dashboard" | "instructions" | "selfie" | "countdown"
+  >("dashboard");
   const [selectedTest, setSelectedTest] = useState<{
     key: "theory_test" | "practical_test" | "viva_test";
     label: string;
@@ -98,6 +102,13 @@ function ExamDashboardInner() {
   const [consentChecked, setConsentChecked] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [isStartingApi, setIsStartingApi] = useState(false);
+
+  // Selfie state
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [isUploadingSelfie, setIsUploadingSelfie] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
@@ -124,6 +135,91 @@ function ExamDashboardInner() {
     }
     return () => clearTimeout(timer);
   }, [view, countdown]);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setCapturedPhoto(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch {
+      setCameraError(
+        "Unable to access camera. Please allow camera permissions and try again."
+      );
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const capturePhoto = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    setCapturedPhoto(canvas.toDataURL("image/jpeg", 0.85));
+  }, []);
+
+  const uploadSelfie = useCallback(async () => {
+    if (!capturedPhoto || !selectedTest) return;
+    setIsUploadingSelfie(true);
+    const testType = selectedTest.key.replace("_test", "");
+
+    try {
+      const res = await fetch(capturedPhoto);
+      const blob = await res.blob();
+      const formData = new FormData();
+      formData.append("photo", blob, "selfie.jpg");
+
+      const uploadRes = await api.post(
+        `/batches/${batchId}/exam/upload-onboarding-selfie?testType=${testType}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      if (uploadRes.data?.error) {
+        toast.error(uploadRes.data.error);
+        return;
+      }
+
+      toast.success("Selfie uploaded successfully!");
+      stopCamera();
+      setCountdown(30);
+      setView("countdown");
+    } catch (error: any) {
+      const errMsg =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        "Failed to upload selfie. Please try again.";
+      toast.error(errMsg);
+    } finally {
+      setIsUploadingSelfie(false);
+    }
+  }, [capturedPhoto, selectedTest, batchId, stopCamera]);
+
+  useEffect(() => {
+    if (view === "selfie") {
+      startCamera();
+    }
+    return () => {
+      if (view === "selfie") {
+        stopCamera();
+      }
+    };
+  }, [view, startCamera, stopCamera]);
 
   const handleLogout = () => {
     dispatch(logoutCandidateAction());
@@ -438,7 +534,7 @@ function ExamDashboardInner() {
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
-                      Step 1 of 2 · Exam Guidelines
+                      Step 1 of {activeTest?.is_onboarding_selfie_required ? "3" : "2"} · Exam Guidelines
                     </span>
                     <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
                       {selectedTest.label} Instructions
@@ -560,14 +656,184 @@ function ExamDashboardInner() {
                 <button
                   disabled={!consentChecked}
                   onClick={() => {
-                    setCountdown(30);
-                    setView("countdown");
+                    if (activeTest?.is_onboarding_selfie_required) {
+                      setView("selfie");
+                    } else {
+                      setCountdown(30);
+                      setView("countdown");
+                    }
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                 >
-                  Proceed to Start
-                  <FiArrowRight className="h-4 w-4" />
+                  {activeTest?.is_onboarding_selfie_required
+                    ? "Proceed to Selfie Verification"
+                    : "Proceed to Start"}
+                  {activeTest?.is_onboarding_selfie_required ? (
+                    <FiCamera className="h-4 w-4" />
+                  ) : (
+                    <FiArrowRight className="h-4 w-4" />
+                  )}
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── VIEW: Selfie ───────────────────────────────── */}
+          {view === "selfie" && selectedTest && (
+            <div className="mx-auto max-w-2xl">
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setCapturedPhoto(null);
+                  setView("instructions");
+                }}
+                className="mb-6 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                <FiArrowLeft className="h-4 w-4" />
+                Back to Instructions
+              </button>
+
+              <div className="rounded-2xl border border-blue-100/80 bg-white p-6 shadow-sm sm:p-10">
+                <div className="mb-6">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
+                    Step 2 of 3 · Identity Verification
+                  </span>
+                  <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
+                    Capture Your Selfie
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Take a clear photo of your face for identity verification
+                    before the exam begins.
+                  </p>
+                </div>
+
+                {/* Instructions */}
+                <div className="mb-6 rounded-xl bg-blue-50/50 p-4">
+                  <ul className="space-y-2 text-sm text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                      <span>Ensure your face is clearly visible and well-lit</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                      <span>Remove any hats, sunglasses, or face coverings</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                      <span>Look directly at the camera and keep a neutral expression</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+                      <span>Make sure the background is plain and not distracting</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Camera / Preview area */}
+                <div className="relative mx-auto mb-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-900"
+                  style={{ maxWidth: 480, aspectRatio: "4/3" }}
+                >
+                  {cameraError ? (
+                    <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 p-6 text-center">
+                      <FiAlertTriangle className="h-10 w-10 text-red-400" />
+                      <p className="text-sm text-red-300">{cameraError}</p>
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        className="rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : capturedPhoto ? (
+                    <img
+                      src={capturedPhoto}
+                      alt="Captured selfie"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <>
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="h-full w-full object-cover mirror"
+                        style={{ transform: "scaleX(-1)" }}
+                      />
+                      {/* Face guide overlay */}
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <div className="h-52 w-44 rounded-full border-2 border-dashed border-white/40" />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-col gap-3">
+                  {!capturedPhoto ? (
+                    <button
+                      type="button"
+                      onClick={capturePhoto}
+                      disabled={!!cameraError}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                    >
+                      <FiCamera className="h-4 w-4" />
+                      Capture Photo
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={uploadSelfie}
+                        disabled={isUploadingSelfie}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-75"
+                      >
+                        {isUploadingSelfie ? (
+                          <span className="flex items-center gap-2">
+                            <svg
+                              className="h-4 w-4 animate-spin text-white"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            Uploading…
+                          </span>
+                        ) : (
+                          <>
+                            Confirm & Proceed
+                            <FiArrowRight className="h-4 w-4" />
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCapturedPhoto(null);
+                          startCamera();
+                        }}
+                        disabled={isUploadingSelfie}
+                        className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-slate-700"
+                      >
+                        <FiRefreshCw className="h-4 w-4" />
+                        Retake Photo
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -577,7 +843,7 @@ function ExamDashboardInner() {
             <div className="mx-auto max-w-xl text-center">
               <div className="rounded-2xl border border-blue-100/80 bg-white p-8 shadow-sm sm:p-12">
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-500">
-                  Step 2 of 2 · System Check
+                  Step {activeTest?.is_onboarding_selfie_required ? "3 of 3" : "2 of 2"} · System Check
                 </span>
 
                 <h2 className="mt-4 text-xl font-bold text-slate-900">

@@ -34,6 +34,12 @@ const BATCH_HEADERS = [
   "AUTH REQUIRED THEORY",
   "AUTH REQUIRED PRACTICAL",
   "AUTH REQUIRED VIVA",
+  "ONBOARDING SELFIE THEORY",
+  "ONBOARDING SELFIE PRACTICAL",
+  "ONBOARDING SELFIE VIVA",
+  "RANDOM EVIDENCE THEORY",
+  "RANDOM EVIDENCE PRACTICAL",
+  "RANDOM EVIDENCE VIVA",
 ] as const;
 
 const SECTION_HEADERS = ["BATCH NAME", "SECTION NAME", "TYPE"] as const;
@@ -136,6 +142,12 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
       "AUTH REQUIRED THEORY": "FALSE",
       "AUTH REQUIRED PRACTICAL": "FALSE",
       "AUTH REQUIRED VIVA": "FALSE",
+      "ONBOARDING SELFIE THEORY": "FALSE",
+      "ONBOARDING SELFIE PRACTICAL": "FALSE",
+      "ONBOARDING SELFIE VIVA": "FALSE",
+      "RANDOM EVIDENCE THEORY": "FALSE",
+      "RANDOM EVIDENCE PRACTICAL": "FALSE",
+      "RANDOM EVIDENCE VIVA": "FALSE",
     },
   ];
 
@@ -404,9 +416,10 @@ export function parseBatchesExcelFile(
     const practicalTime = numberValue(row["PRACTICAL TIME"]);
     const vivaTime = numberValue(row["VIVA TIME"]);
 
-    const parseBoolean = (val: unknown) => {
+    const parseBoolean = (val: unknown): boolean => {
+      if (typeof val === "boolean") return val;
       const s = stringValue(val).toUpperCase();
-      return s === "TRUE" || s === "1" || s === "YES";
+      return s === "TRUE" || s === "1" || s === "YES" || s === "Y";
     };
 
     result.push({
@@ -423,6 +436,24 @@ export function parseBatchesExcelFile(
       ),
       is_authorization_required_in_viva: parseBoolean(
         row["AUTH REQUIRED VIVA"]
+      ),
+      is_onboarding_selfie_required_theory: parseBoolean(
+        row["ONBOARDING SELFIE THEORY"]
+      ),
+      is_random_evidence_required_theory: parseBoolean(
+        row["RANDOM EVIDENCE THEORY"]
+      ),
+      is_onboarding_selfie_required_practical: parseBoolean(
+        row["ONBOARDING SELFIE PRACTICAL"]
+      ),
+      is_random_evidence_required_practical: parseBoolean(
+        row["RANDOM EVIDENCE PRACTICAL"]
+      ),
+      is_onboarding_selfie_required_viva: parseBoolean(
+        row["ONBOARDING SELFIE VIVA"]
+      ),
+      is_random_evidence_required_viva: parseBoolean(
+        row["RANDOM EVIDENCE VIVA"]
       ),
       sections,
     });
