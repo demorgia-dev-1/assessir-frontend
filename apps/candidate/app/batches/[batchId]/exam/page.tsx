@@ -44,6 +44,12 @@ interface BatchData {
   theory_test: TestData | null;
   practical_test: TestData | null;
   viva_test: TestData | null;
+  onboardinig_selfie_uploaded_theory?: string | null;
+  onboardinig_selfie_uploaded_practical?: string | null;
+  onboardinig_selfie_uploaded_viva?: string | null;
+  theory_exam_status?: string | null;
+  practical_exam_status?: string | null;
+  viva_exam_status?: string | null;
 }
 
 /* ── Test card config ───────────────────────────────── */
@@ -258,6 +264,7 @@ function ExamDashboardInner() {
         testId: testData!.id,
         sections: testData!.sections,
         timeInMinutes: testData!.time_in_minutes,
+        isRandomEvidenceRequired: testData!.is_random_evidence_required ?? false,
       });
       router.push(
         `/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`
@@ -328,6 +335,15 @@ function ExamDashboardInner() {
         0
       ) ?? 0
     : 0;
+
+  const selfieUploadedKey = selectedTest
+    ? (`onboardinig_selfie_uploaded_${selectedTest.key.replace("_test", "")}` as keyof BatchData)
+    : null;
+  const isSelfieAlreadyUploaded = selfieUploadedKey
+    ? !!batch[selfieUploadedKey]
+    : false;
+  const needsSelfieCapture =
+    !!activeTest?.is_onboarding_selfie_required && !isSelfieAlreadyUploaded;
 
   return (
     <>
@@ -534,7 +550,7 @@ function ExamDashboardInner() {
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
-                      Step 1 of {activeTest?.is_onboarding_selfie_required ? "3" : "2"} · Exam Guidelines
+                      Step 1 of {needsSelfieCapture ? "3" : "2"} · Exam Guidelines
                     </span>
                     <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
                       {selectedTest.label} Instructions
@@ -652,11 +668,23 @@ function ExamDashboardInner() {
                   </label>
                 </div>
 
+                {/* Selfie status notice */}
+                {activeTest?.is_onboarding_selfie_required &&
+                  isSelfieAlreadyUploaded && (
+                    <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                      <FiCheck className="h-5 w-5 shrink-0 text-emerald-500" />
+                      <span>
+                        <strong>Selfie already uploaded.</strong> You can proceed
+                        directly to start the test.
+                      </span>
+                    </div>
+                  )}
+
                 {/* Action button */}
                 <button
                   disabled={!consentChecked}
                   onClick={() => {
-                    if (activeTest?.is_onboarding_selfie_required) {
+                    if (needsSelfieCapture) {
                       setView("selfie");
                     } else {
                       setCountdown(30);
@@ -665,10 +693,10 @@ function ExamDashboardInner() {
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                 >
-                  {activeTest?.is_onboarding_selfie_required
+                  {needsSelfieCapture
                     ? "Proceed to Selfie Verification"
                     : "Proceed to Start"}
-                  {activeTest?.is_onboarding_selfie_required ? (
+                  {needsSelfieCapture ? (
                     <FiCamera className="h-4 w-4" />
                   ) : (
                     <FiArrowRight className="h-4 w-4" />
@@ -843,7 +871,7 @@ function ExamDashboardInner() {
             <div className="mx-auto max-w-xl text-center">
               <div className="rounded-2xl border border-blue-100/80 bg-white p-8 shadow-sm sm:p-12">
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-500">
-                  Step {activeTest?.is_onboarding_selfie_required ? "3 of 3" : "2 of 2"} · System Check
+                  Step {needsSelfieCapture ? "3 of 3" : "2 of 2"} · System Check
                 </span>
 
                 <h2 className="mt-4 text-xl font-bold text-slate-900">

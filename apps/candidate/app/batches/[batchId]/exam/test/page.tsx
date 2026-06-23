@@ -43,6 +43,7 @@ interface TestInfo {
   testId: number;
   sections: { id: number; question_ids: number[] }[];
   timeInMinutes: number;
+  isRandomEvidenceRequired?: boolean;
 }
 
 function ExamTestInner() {
@@ -182,6 +183,231 @@ function ExamTestInner() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
+  // ── Random Evidence Capture ──────────────────────────
+  const evidenceVideoRef = useRef<HTMLVideoElement | null>(null);
+  const evidenceStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const evidenceReadyRef = useRef(false);
+  const imageIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const videoIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const uploadEvidence = useCallback(
+    async (blob: Blob, fileName: string, evType: "image" | "video") => {
+      try {
+        const formData = new FormData();
+        formData.append("file", blob, fileName);
+        await api.post(
+          `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(fileName)}&evType=${evType}`,
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+      } catch (err) {
+        console.error(`Evidence upload failed (${evType}):`, err);
+      }
+    },
+    [batchId]
+  );
+
+  const captureEvidenceImage = useCallback(() => {
+    const video = evidenceVideoRef.current;
+    if (!video || video.readyState < 2) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const loc = locationRef.current;
+    const ts = new Date().toISOString();
+    const overlayText = loc
+      ? `Lat: ${loc.lat.toFixed(6)} | Lng: ${loc.lng.toFixed(6)} | ${ts}`
+      : `Location: N/A | ${ts}`;
+
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 14px monospace";
+    ctx.fillText(overlayText, 8, canvas.height - 10);
+
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          const fileName = `${Date.now()}.jpg`;
+          uploadEvidence(blob, fileName, "image");
+        }
+      },
+      "image/jpeg",
+      0.8
+    );
+  }, [uploadEvidence]);
+
+  const stopCurrentVideoRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  }, []);
+
+  const startVideoChunk = useCallback(() => {
+    const stream = evidenceStreamRef.current;
+    if (!stream) return;
+
+    videoChunksRef.current = [];
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : MediaRecorder.isTypeSupported("video/webm")
+      ? "video/webm"
+      : "video/mp4";
+
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) videoChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        if (videoChunksRef.current.length > 0) {
+          const ext = mimeType.includes("webm") ? "webm" : "mp4";
+          const blob = new Blob(videoChunksRef.current, { type: mimeType });
+          const fileName = `${Date.now()}.${ext}`;
+          uploadEvidence(blob, fileName, "video");
+          videoChunksRef.current = [];
+        }
+      };
+
+      recorder.start(1000);
+    } catch (err) {
+      console.error("MediaRecorder start failed:", err);
+    }
+  }, [uploadEvidence]);
+
+  // Initialize camera, mic, location for evidence
+  useEffect(() => {
+    if (!testInfo?.isRandomEvidenceRequired) return;
+
+    let watchId: number | undefined;
+    let cancelled = false;
+
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          locationRef.current = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+        },
+        () => {},
+        { enableHighAccuracy: true }
+      );
+    }
+
+    const videoEl = document.createElement("video");
+    videoEl.setAttribute("autoplay", "");
+    videoEl.setAttribute("playsinline", "");
+    videoEl.setAttribute("muted", "");
+    videoEl.style.position = "fixed";
+    videoEl.style.top = "-9999px";
+    videoEl.style.width = "1px";
+    videoEl.style.height = "1px";
+    document.body.appendChild(videoEl);
+    evidenceVideoRef.current = videoEl;
+
+    navigator.mediaDevices
+      .getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: true,
+      })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        evidenceStreamRef.current = stream;
+        videoEl.srcObject = stream;
+        evidenceReadyRef.current = true;
+      })
+      .catch(() => {
+        console.error("Evidence: failed to access camera/mic");
+      });
+
+    return () => {
+      cancelled = true;
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+      evidenceStreamRef.current?.getTracks().forEach((t) => t.stop());
+      evidenceStreamRef.current = null;
+      evidenceReadyRef.current = false;
+      if (evidenceVideoRef.current) {
+        evidenceVideoRef.current.remove();
+        evidenceVideoRef.current = null;
+      }
+    };
+  }, [testInfo?.isRandomEvidenceRequired]);
+
+  // Image capture every 40 seconds
+  useEffect(() => {
+    if (!testInfo?.isRandomEvidenceRequired) return;
+
+    const startInterval = () => {
+      imageIntervalRef.current = setInterval(() => {
+        if (evidenceReadyRef.current) captureEvidenceImage();
+      }, 40_000);
+    };
+
+    const checkReady = setInterval(() => {
+      if (evidenceReadyRef.current) {
+        clearInterval(checkReady);
+        captureEvidenceImage();
+        startInterval();
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(checkReady);
+      if (imageIntervalRef.current) clearInterval(imageIntervalRef.current);
+    };
+  }, [testInfo?.isRandomEvidenceRequired, captureEvidenceImage]);
+
+  // Video recording in 1-minute chunks
+  useEffect(() => {
+    if (!testInfo?.isRandomEvidenceRequired) return;
+
+    const checkReady = setInterval(() => {
+      if (evidenceReadyRef.current) {
+        clearInterval(checkReady);
+        startVideoChunk();
+        videoIntervalRef.current = setInterval(() => {
+          stopCurrentVideoRecording();
+          setTimeout(() => startVideoChunk(), 200);
+        }, 60_000);
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(checkReady);
+      if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+      stopCurrentVideoRecording();
+    };
+  }, [testInfo?.isRandomEvidenceRequired, startVideoChunk, stopCurrentVideoRecording]);
+
+  // Stop evidence capture on exam completion
+  const stopEvidenceCapture = useCallback(() => {
+    if (imageIntervalRef.current) clearInterval(imageIntervalRef.current);
+    if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+    stopCurrentVideoRecording();
+    evidenceStreamRef.current?.getTracks().forEach((t) => t.stop());
+    evidenceStreamRef.current = null;
+    evidenceReadyRef.current = false;
+    if (evidenceVideoRef.current) {
+      evidenceVideoRef.current.remove();
+      evidenceVideoRef.current = null;
+    }
+  }, [stopCurrentVideoRecording]);
+
   // Submission States
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [isSubmittingApi, setIsSubmittingApi] = useState(false);
@@ -294,6 +520,7 @@ function ExamTestInner() {
 
   const handleSubmit = async (isAutoSubmit = false) => {
     submitPendingTextAnswer();
+    stopEvidenceCapture();
     setIsSubmittingApi(true);
     setIsSubmitModalOpen(false);
 
