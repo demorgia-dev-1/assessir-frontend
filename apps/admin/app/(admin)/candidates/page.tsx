@@ -12,12 +12,17 @@ import {
   FiAlertTriangle,
   FiX,
   FiChevronDown,
+  FiEye,
+  FiEyeOff,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import api from "@/lib/api";
 import {
   fetchCandidates,
   createCandidates,
   deleteCandidatesFromBatch,
+  resetCandidate,
   clearCandidatesError,
   clearCandidates,
   setSelectedBatchId,
@@ -41,6 +46,7 @@ export default function CandidatesPage() {
     loading,
     creating,
     deleting,
+    resetting,
     error,
     selectedBatchId,
   } = useAppSelector((state) => state.candidates);
@@ -59,21 +65,17 @@ export default function CandidatesPage() {
   const [excelParsedCandidates, setExcelParsedCandidates] = useState<
     Array<{ enrollment_no: string; password: string }>
   >([]);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
+  const [loadingPasswords, setLoadingPasswords] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
     new Set()
   );
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [resetCandidateId, setResetCandidateId] = useState<string | number | null>(null);
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 1000 }));
   }, [dispatch]);
-
-  useEffect(() => {
-    if (error) {
-      toast.error(error, { toastId: error });
-      dispatch(clearCandidatesError());
-    }
-  }, [error, dispatch]);
 
   const selectedBatch = batches.find(
     (b) => String(b.id) === String(selectedBatchId)
@@ -86,17 +88,59 @@ export default function CandidatesPage() {
     setExcelParsedCandidates([]);
     setExcelValidationErrors([]);
     setSelectedIds(new Set());
+    setRevealedPasswords({});
+    setLoadingPasswords({});
   };
 
   const handleSelectBatch = (batchId: string) => {
     if (!batchId) {
       dispatch(clearCandidates());
       resetRightPanel();
+      setRevealedPasswords({});
+      setLoadingPasswords({});
       return;
     }
     dispatch(setSelectedBatchId(batchId));
     dispatch(fetchCandidates(batchId));
     resetRightPanel();
+    setRevealedPasswords({});
+    setLoadingPasswords({});
+  };
+
+  const handleShowPassword = async (enrollmentNo: string) => {
+    if (!selectedBatchId) return;
+
+    if (revealedPasswords[enrollmentNo]) {
+      setRevealedPasswords((prev) => {
+        const next = { ...prev };
+        delete next[enrollmentNo];
+        return next;
+      });
+      return;
+    }
+
+    setLoadingPasswords((prev) => ({ ...prev, [enrollmentNo]: true }));
+    try {
+      const response = await api.post(`/batches/${selectedBatchId}/show-password`, {
+        enrollment_no: enrollmentNo,
+      });
+
+      const pwd = response.data?.password || response.data?.Password || response.data?.data?.password || "";
+      if (pwd) {
+        setRevealedPasswords((prev) => ({ ...prev, [enrollmentNo]: pwd }));
+      } else {
+        toast.error("Password not found in response");
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to fetch password";
+      toast.error(message);
+    } finally {
+      setLoadingPasswords((prev) => ({ ...prev, [enrollmentNo]: false }));
+    }
   };
 
   const handleDownloadTemplate = () => {
@@ -133,7 +177,6 @@ export default function CandidatesPage() {
     );
 
     if (createCandidates.fulfilled.match(actionResult)) {
-      toast.success("Candidates added successfully.");
       resetRightPanel();
       dispatch(fetchCandidates(selectedBatchId));
     }
@@ -180,9 +223,6 @@ export default function CandidatesPage() {
     );
 
     if (createCandidates.fulfilled.match(actionResult)) {
-      toast.success(
-        `Imported ${excelParsedCandidates.length} candidates successfully.`
-      );
       resetRightPanel();
       dispatch(fetchCandidates(selectedBatchId));
     }
@@ -215,13 +255,21 @@ export default function CandidatesPage() {
     );
 
     if (deleteCandidatesFromBatch.fulfilled.match(actionResult)) {
-      toast.success(
-        `${selectedIds.size} candidate${
-          selectedIds.size > 1 ? "s" : ""
-        } removed successfully.`
-      );
       setSelectedIds(new Set());
       setShowDeleteModal(false);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    if (!selectedBatchId || !resetCandidateId) return;
+
+    const actionResult = await dispatch(
+      resetCandidate({ batchId: selectedBatchId, candidateId: resetCandidateId })
+    );
+
+    if (resetCandidate.fulfilled.match(actionResult)) {
+      setResetCandidateId(null);
+      dispatch(fetchCandidates(selectedBatchId));
     }
   };
 
@@ -394,6 +442,9 @@ export default function CandidatesPage() {
                       <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                         Password
                       </th>
+                      <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -422,10 +473,44 @@ export default function CandidatesPage() {
                           <td className="px-5 py-3 text-xs font-semibold text-slate-900">
                             {cand.enrollment_no}
                           </td>
-                          <td className="px-5 py-3 text-xs text-slate-600">
-                            <code className="rounded border border-slate-100 bg-slate-50 px-2 py-0.5 font-mono text-[11px]">
-                              {cand.password}
-                            </code>
+                          <td className="px-5 py-3 text-xs text-slate-600" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-2">
+                              <code className="rounded border border-slate-100 bg-slate-50 px-2 py-0.5 font-mono text-[11px] min-w-[80px] text-center inline-block">
+                                {revealedPasswords[cand.enrollment_no]
+                                  ? revealedPasswords[cand.enrollment_no]
+                                  : "••••••••"}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() => handleShowPassword(cand.enrollment_no)}
+                                className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded-md hover:bg-slate-100 flex items-center justify-center shrink-0"
+                                title={revealedPasswords[cand.enrollment_no] ? "Hide Password" : "Show Password"}
+                                disabled={loadingPasswords[cand.enrollment_no]}
+                              >
+                                {loadingPasswords[cand.enrollment_no] ? (
+                                  <svg className="animate-spin h-3.5 w-3.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                ) : revealedPasswords[cand.enrollment_no] ? (
+                                  <FiEyeOff className="h-3.5 w-3.5" />
+                                ) : (
+                                  <FiEye className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-xs" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setResetCandidateId(cand.id!)}
+                              disabled={resetting}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+                              title="Reset Candidate"
+                            >
+                              <FiRefreshCw className="h-3.5 w-3.5" />
+                              Reset
+                            </button>
                           </td>
                         </tr>
                       );
@@ -803,6 +888,52 @@ export default function CandidatesPage() {
                         ? `${selectedIds.size} Candidates`
                         : "Candidate"
                     }`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset candidate confirmation modal */}
+      {resetCandidateId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay animate-in fade-in duration-200">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
+                <FiAlertTriangle className="h-6 w-6 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Reset Candidate
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Please Confirm
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Are you sure you want to reset candidate{" "}
+              <span className="font-semibold text-slate-950">
+                {candidates.find((c) => c.id === resetCandidateId)?.enrollment_no || resetCandidateId}
+              </span>
+              ? This will clear their exam progress.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setResetCandidateId(null)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+                disabled={resetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                className="flex-1 rounded-2xl bg-amber-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 transition hover:bg-amber-600 disabled:opacity-50 active:scale-[0.98]"
+                disabled={resetting}
+              >
+                {resetting ? "Resetting…" : "Reset Candidate"}
               </button>
             </div>
           </div>

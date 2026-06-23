@@ -142,19 +142,37 @@ function getErrorMessage(error: any, fallback: string) {
   let message =
     error?.response?.data?.error ||
     error?.response?.data?.message ||
+    error?.response?.data?.errors ||
     error?.response?.data ||
     error?.message ||
     fallback;
 
   if (typeof message === "object" && message !== null) {
-    message = message.error || message.message || JSON.stringify(message);
+    if (message.errors) {
+      if (Array.isArray(message.errors)) {
+        message = message.errors.join(", ");
+      } else if (typeof message.errors === "object") {
+        message = Object.values(message.errors).flat().join(", ");
+      }
+    } else {
+      message = message.error || message.message || JSON.stringify(message);
+    }
   }
 
   if (typeof message === "string") {
     try {
       const parsed = JSON.parse(message);
-      if (parsed.error) message = parsed.error;
-      else if (parsed.message) message = parsed.message;
+      if (parsed.errors) {
+        if (Array.isArray(parsed.errors)) {
+          message = parsed.errors.join(", ");
+        } else if (typeof parsed.errors === "object") {
+          message = Object.values(parsed.errors).flat().join(", ");
+        }
+      } else if (parsed.error) {
+        message = parsed.error;
+      } else if (parsed.message) {
+        message = parsed.message;
+      }
     } catch (e) {
       // Ignore JSON parse errors
     }

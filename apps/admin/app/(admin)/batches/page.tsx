@@ -2,12 +2,13 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import {
   FiDownload,
   FiEdit2,
   FiEye,
+  FiEyeOff,
   FiPlus,
   FiTrash2,
   FiUploadCloud,
@@ -398,6 +399,8 @@ export default function BatchesPage() {
   const [excelParsedCandidates, setExcelParsedCandidates] = useState<
     Array<{ enrollment_no: string; password: string }>
   >([]);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
+  const [loadingPasswords, setLoadingPasswords] = useState<Record<string, boolean>>({});
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [schedulingBatchId, setSchedulingBatchId] = useState<
     string | number | null
@@ -794,8 +797,46 @@ export default function BatchesPage() {
     setExcelFile(null);
     setExcelValidationErrors([]);
     setExcelParsedCandidates([]);
+    setRevealedPasswords({});
+    setLoadingPasswords({});
     dispatch(fetchBatchById(id));
     dispatch(fetchCandidates(id));
+  };
+
+  const handleShowPassword = async (enrollmentNo: string) => {
+    if (!selectedBatch) return;
+
+    if (revealedPasswords[enrollmentNo]) {
+      setRevealedPasswords((prev) => {
+        const next = { ...prev };
+        delete next[enrollmentNo];
+        return next;
+      });
+      return;
+    }
+
+    setLoadingPasswords((prev) => ({ ...prev, [enrollmentNo]: true }));
+    try {
+      const response = await api.post(`/batches/${selectedBatch.id}/show-password`, {
+        enrollment_no: enrollmentNo,
+      });
+
+      const pwd = response.data?.password || response.data?.Password || response.data?.data?.password || "";
+      if (pwd) {
+        setRevealedPasswords((prev) => ({ ...prev, [enrollmentNo]: pwd }));
+      } else {
+        toast.error("Password not found in response");
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to fetch password";
+      toast.error(message);
+    } finally {
+      setLoadingPasswords((prev) => ({ ...prev, [enrollmentNo]: false }));
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -2343,6 +2384,8 @@ export default function BatchesPage() {
                 type="button"
                 onClick={() => {
                   setDetailsOpen(false);
+                  setRevealedPasswords({});
+                  setLoadingPasswords({});
                   dispatch(clearSelectedBatch());
                 }}
                 className="rounded-xl border border-slate-200 p-2 text-slate-500"
@@ -2709,9 +2752,31 @@ export default function BatchesPage() {
                                         {cand.enrollment_no}
                                       </td>
                                       <td className="px-5 py-3 text-xs text-slate-600">
-                                        <code className="bg-slate-50 rounded px-2 py-0.5 font-mono text-[11px] border border-slate-100">
-                                          {cand.password}
-                                        </code>
+                                        <div className="flex items-center gap-2">
+                                          <code className="bg-slate-50 rounded px-2 py-0.5 font-mono text-[11px] border border-slate-100 min-w-[80px] text-center inline-block">
+                                            {revealedPasswords[cand.enrollment_no] 
+                                              ? revealedPasswords[cand.enrollment_no] 
+                                              : "••••••••"}
+                                          </code>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleShowPassword(cand.enrollment_no)}
+                                            className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded-md hover:bg-slate-100 flex items-center justify-center shrink-0"
+                                            title={revealedPasswords[cand.enrollment_no] ? "Hide Password" : "Show Password"}
+                                            disabled={loadingPasswords[cand.enrollment_no]}
+                                          >
+                                            {loadingPasswords[cand.enrollment_no] ? (
+                                              <svg className="animate-spin h-3.5 w-3.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                              </svg>
+                                            ) : revealedPasswords[cand.enrollment_no] ? (
+                                              <FiEyeOff className="h-3.5 w-3.5" />
+                                            ) : (
+                                              <FiEye className="h-3.5 w-3.5" />
+                                            )}
+                                          </button>
+                                        </div>
                                       </td>
                                     </tr>
                                   ))}
@@ -2856,16 +2921,6 @@ export default function BatchesPage() {
           </form>
         </div>
       )}
-      <ToastContainer
-        position="top-right"
-        autoClose={4000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-      />
     </section>
   );
 }

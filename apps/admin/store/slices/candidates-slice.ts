@@ -21,12 +21,18 @@ export type DeleteCandidatesInput = {
   candidateIds: Array<string | number>;
 };
 
+export type ResetCandidateInput = {
+  batchId: string | number;
+  candidateId: string | number;
+};
+
 interface CandidatesState {
   candidates: Candidate[];
   totalCandidates: number;
   loading: boolean;
   creating: boolean;
   deleting: boolean;
+  resetting: boolean;
   error: string | null;
   selectedBatchId: string | number | null;
 }
@@ -37,6 +43,7 @@ const initialState: CandidatesState = {
   loading: false,
   creating: false,
   deleting: false,
+  resetting: false,
   error: null,
   selectedBatchId: null,
 };
@@ -45,19 +52,37 @@ function getErrorMessage(error: any, fallback: string) {
   let message =
     error?.response?.data?.error ||
     error?.response?.data?.message ||
+    error?.response?.data?.errors ||
     error?.response?.data ||
     error?.message ||
     fallback;
 
   if (typeof message === "object" && message !== null) {
-    message = message.error || message.message || JSON.stringify(message);
+    if (message.errors) {
+      if (Array.isArray(message.errors)) {
+        message = message.errors.join(", ");
+      } else if (typeof message.errors === "object") {
+        message = Object.values(message.errors).flat().join(", ");
+      }
+    } else {
+      message = message.error || message.message || JSON.stringify(message);
+    }
   }
 
   if (typeof message === "string") {
     try {
       const parsed = JSON.parse(message);
-      if (parsed.error) message = parsed.error;
-      else if (parsed.message) message = parsed.message;
+      if (parsed.errors) {
+        if (Array.isArray(parsed.errors)) {
+          message = parsed.errors.join(", ");
+        } else if (typeof parsed.errors === "object") {
+          message = Object.values(parsed.errors).flat().join(", ");
+        }
+      } else if (parsed.error) {
+        message = parsed.error;
+      } else if (parsed.message) {
+        message = parsed.message;
+      }
     } catch {
       // not JSON, use as-is
     }
@@ -130,6 +155,26 @@ export const deleteCandidatesFromBatch = createAsyncThunk(
       return candidateIds;
     } catch (error: any) {
       const message = getErrorMessage(error, "Failed to delete candidates");
+      toast.error(message);
+      return rejectWithValue(message);
+    }
+  }
+);
+
+export const resetCandidate = createAsyncThunk(
+  "candidates/resetCandidate",
+  async (
+    { batchId, candidateId }: ResetCandidateInput,
+    { rejectWithValue }
+  ) => {
+    try {
+      const response = await api.post(
+        `/batches/${batchId}/candidates/${candidateId}/reset`
+      );
+      toast.success("Candidate reset successfully.");
+      return { candidateId, data: response.data };
+    } catch (error: any) {
+      const message = getErrorMessage(error, "Failed to reset candidate");
       toast.error(message);
       return rejectWithValue(message);
     }
@@ -218,6 +263,19 @@ const candidatesSlice = createSlice({
       )
       .addCase(deleteCandidatesFromBatch.rejected, (state, action) => {
         state.deleting = false;
+        state.error = action.payload as string;
+      })
+
+      // resetCandidate
+      .addCase(resetCandidate.pending, (state) => {
+        state.resetting = true;
+        state.error = null;
+      })
+      .addCase(resetCandidate.fulfilled, (state) => {
+        state.resetting = false;
+      })
+      .addCase(resetCandidate.rejected, (state, action) => {
+        state.resetting = false;
         state.error = action.payload as string;
       });
   },
