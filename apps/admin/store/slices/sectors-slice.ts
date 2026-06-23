@@ -64,7 +64,7 @@ export const fetchSectors = createAsyncThunk(
       }
       return data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to fetch sectors");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to fetch sectors");
     }
   }
 );
@@ -76,7 +76,7 @@ export const fetchSectorById = createAsyncThunk(
       const response = await api.get(`/sectors/${id}`);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to fetch sector details");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to fetch sector details");
     }
   }
 );
@@ -88,7 +88,7 @@ export const createSector = createAsyncThunk(
       const response = await api.post("/sectors", data);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to create sector");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to create sector");
     }
   }
 );
@@ -100,7 +100,7 @@ export const updateSector = createAsyncThunk(
       const response = await api.patch(`/sectors/${id}`, { name });
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to update sector");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to update sector");
     }
   }
 );
@@ -112,7 +112,7 @@ export const deleteSector = createAsyncThunk(
       await api.delete(`/sectors/${id}`);
       return id;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to delete sector");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to delete sector");
     }
   }
 );
@@ -153,13 +153,15 @@ const sectorSlice = createSlice({
           state.hasNext = false;
           state.hasPrev = false;
         } else {
-          state.sectors = action.payload.sectors;
-          state.totalSectors = action.payload.totalSectors;
-          state.totalPages = action.payload.totalPages;
-          state.currentPage = action.payload.page;
-          state.limit = action.payload.limit;
-          state.hasNext = action.payload.hasNext;
-          state.hasPrev = action.payload.hasPrev;
+          const payload = action.payload;
+          state.sectors = payload.sectors || [];
+          state.totalSectors =
+            payload.totalSectors ?? payload.sectors?.length ?? 0;
+          state.totalPages = payload.totalPages ?? 1;
+          state.currentPage = payload.page ?? 1;
+          state.limit = payload.limit ?? state.limit;
+          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       })
       .addCase(fetchSectors.rejected, (state, action) => {

@@ -6,6 +6,7 @@ export type User = {
   email: string;
   name: string;
   role: string; // e.g. "admin" | "assessor" | "candidate"
+  team_id?: string | number;
   created_at?: string;
   updated_at?: string;
 };
@@ -15,6 +16,7 @@ export type CreateUserInput = {
   name: string;
   password?: string;
   role: string;
+  team_id?: string | number;
 };
 
 export type GetUsersParams = {
@@ -65,7 +67,7 @@ export const fetchUsers = createAsyncThunk(
       }
       return data; // Expected formats: { users: [], totalUsers: 0, totalPages: 1, ... }
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to fetch users");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to fetch users");
     }
   }
 );
@@ -77,7 +79,7 @@ export const fetchUserById = createAsyncThunk(
       const response = await api.get(`/users/${id}`);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to fetch user details");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to fetch user details");
     }
   }
 );
@@ -89,7 +91,7 @@ export const createUser = createAsyncThunk(
       const response = await api.post("/users", data);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Failed to create user");
+      return rejectWithValue(error.response?.data?.error || error.response?.data?.message || "Failed to create user");
     }
   }
 );
@@ -137,8 +139,8 @@ const usersSlice = createSlice({
           state.totalPages = payload.totalPages ?? 1;
           state.currentPage = payload.page ?? 1;
           state.limit = payload.limit ?? 10;
-          state.hasNext = payload.hasNext ?? false;
-          state.hasPrev = payload.hasPrev ?? false;
+          state.hasNext = payload.hasNext ?? state.currentPage < state.totalPages;
+          state.hasPrev = payload.hasPrev ?? state.currentPage > 1;
         }
       })
       .addCase(fetchUsers.rejected, (state, action) => {

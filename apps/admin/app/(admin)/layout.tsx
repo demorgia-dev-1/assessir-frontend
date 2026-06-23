@@ -4,10 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import {
-  initializeAuth,
-  logoutAdminAction
-} from "@/store/slices/auth-slice";
+import { initializeAuth, logoutAdminAction } from "@/store/slices/auth-slice";
 
 const navigationItems = [
   {
@@ -24,26 +21,9 @@ const navigationItems = [
       >
         <path d="M4 13.2c0-.64 0-.96.08-1.26a2 2 0 0 1 .43-.78c.21-.23.5-.4 1.06-.76l5.3-3.36c.5-.32.76-.48 1.05-.54a2 2 0 0 1 .76 0c.29.06.55.22 1.05.54l5.3 3.36c.56.36.85.53 1.06.76.2.22.35.48.43.78.08.3.08.62.08 1.26v4.04c0 1.12 0 1.68-.22 2.1a2 2 0 0 1-.88.88c-.42.22-.98.22-2.1.22H8.2c-1.12 0-1.68 0-2.1-.22a2 2 0 0 1-.88-.88c-.22-.42-.22-.98-.22-2.1z" />
       </svg>
-    )
+    ),
   },
-  {
-    href: "/users",
-    label: "Users",
-    icon: (
-      <svg
-        aria-hidden="true"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        viewBox="0 0 24 24"
-      >
-        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-        <circle cx="9.5" cy="7" r="4" />
-        <path d="M20 8v6M23 11h-6" />
-      </svg>
-    )
-  },
+
   {
     href: "/sectors",
     label: "Sectors",
@@ -61,12 +41,11 @@ const navigationItems = [
         <path d="M9 13h6" />
         <path d="M9 17h6" />
       </svg>
-    )
+    ),
   },
- 
   {
-    href: "/reports",
-    label: "Reports",
+    href: "/job-roles",
+    label: "Job Roles",
     icon: (
       <svg
         aria-hidden="true"
@@ -76,11 +55,134 @@ const navigationItems = [
         strokeWidth="1.8"
         viewBox="0 0 24 24"
       >
-        <path d="M4 19.5V6.75A1.75 1.75 0 0 1 5.75 5h12.5A1.75 1.75 0 0 1 20 6.75V19.5" />
-        <path d="M8 10h8M8 14h8M8 18h5" />
+        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+        <circle cx="9.5" cy="7" r="4" />
+        <path d="M20 8v6M23 11h-6" />
       </svg>
-    )
-  }
+    ),
+  },
+  {
+    href: "/topics",
+    label: "Topics",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v9A2.5 2.5 0 0 1 16.5 19h-9A2.5 2.5 0 0 1 5 16.5z" />
+        <path d="M8 9h8M8 12h8M8 15h5" />
+      </svg>
+    ),
+  },
+  {
+    href: "/questions",
+    label: "Questions",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-4l-3 3z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/batches",
+    label: "Batches",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" />
+        <path d="M8 9h8M8 12h8M8 15h5" />
+        <path d="M15.5 5v14" />
+      </svg>
+    ),
+  },
+  {
+    href: "/candidates",
+    label: "Candidates",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    href: "/users",
+    label: "Users",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+        <circle cx="9.5" cy="7" r="4" />
+        <path d="M20 8v6M23 11h-6" />
+      </svg>
+    ),
+  },
+  {
+    href: "/teams",
+    label: "Teams",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+      </svg>
+    ),
+  },
+
+  // {
+  //   href: "/reports",
+  //   label: "Reports",
+  //   icon: (
+  //     <svg
+  //       aria-hidden="true"
+  //       className="h-5 w-5"
+  //       fill="none"
+  //       stroke="currentColor"
+  //       strokeWidth="1.8"
+  //       viewBox="0 0 24 24"
+  //     >
+  //       <path d="M4 19.5V6.75A1.75 1.75 0 0 1 5.75 5h12.5A1.75 1.75 0 0 1 20 6.75V19.5" />
+  //       <path d="M8 10h8M8 14h8M8 18h5" />
+  //     </svg>
+  //   )
+  // }
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -124,12 +226,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <div className="relative z-10 flex h-full flex-col">
             <div>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/12 text-lg font-semibold text-white backdrop-blur">
-                  A
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm shadow-slate-950/10">
+                  <img
+                    src="/logo.png"
+                    alt="Asses-Sir Logo"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.28em] text-cyan-200">
-                    Assessir
+                    Asses-Sir
                   </p>
                   <h1 className="mt-1 text-xl font-semibold text-white">
                     Admin Console
@@ -160,15 +266,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-slate-950/30 p-5 backdrop-blur-sm">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-300">
+              {/* <p className="text-xs uppercase tracking-[0.22em] text-slate-300">
                 Session
-              </p>
+              </p> */}
               <p className="mt-2 text-sm font-semibold text-white">
                 {session?.role ?? "admin"}
               </p>
-              <p className="mt-2 text-sm text-slate-300">
+              {/* <p className="mt-2 text-sm text-slate-300">
                 Cookie-based session active for Assessir operations.
-              </p>
+              </p> */}
               <button
                 className="mt-5 w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/18"
                 onClick={handleLogout}

@@ -10,8 +10,9 @@ import {
   clearSelectedUser,
   User
 } from "@/store/slices/users-slice";
+import { fetchTeams } from "@/store/slices/teams-slice";
 import { toast } from "react-toastify";
-import { FiEye, FiUserPlus, FiX, FiMail, FiUser, FiLock, FiCheck } from "react-icons/fi";
+import { FiEye, FiEyeOff, FiUserPlus, FiX, FiMail, FiUser, FiLock, FiCheck } from "react-icons/fi";
 
 export default function UsersPage() {
   const dispatch = useAppDispatch();
@@ -28,23 +29,27 @@ export default function UsersPage() {
     hasNext,
     hasPrev
   } = useAppSelector((state) => state.users);
+  const { teams, loading: teamsLoading } = useAppSelector((state) => state.teams);
 
   // Form states
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("candidate");
+  const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState("");
+  const [teamId, setTeamId] = useState("");
 
   // Side Panel state controls
   const [panelMode, setPanelMode] = useState<"create" | "view">("create");
 
   useEffect(() => {
     dispatch(fetchUsers({ page: 1, limit: 10 }));
+    dispatch(fetchTeams({ page: 1, limit: 100 }));
   }, [dispatch]);
 
   useEffect(() => {
     if (error) {
-      toast.error(error);
+      toast.error(error, { toastId: error });
       dispatch(clearError());
     }
   }, [error, dispatch]);
@@ -60,11 +65,22 @@ export default function UsersPage() {
       return;
     }
 
+    if (!role) {
+      toast.error("Please select an access role.");
+      return;
+    }
+
+    if (role === "team_member" && !teamId) {
+      toast.error("Please select a team for this team member.");
+      return;
+    }
+
     const payload = {
       name: name.trim(),
       email: email.trim(),
       password,
-      role
+      role,
+      ...(role === "team_member" ? { team_id: Number(teamId) } : {})
     };
 
     const resultAction = await dispatch(createUser(payload));
@@ -74,7 +90,15 @@ export default function UsersPage() {
       setName("");
       setEmail("");
       setPassword("");
-      setRole("candidate");
+      setRole("");
+      setTeamId("");
+    }
+  };
+
+  const handleRoleChange = (nextRole: string) => {
+    setRole(nextRole);
+    if (nextRole !== "team_member") {
+      setTeamId("");
     }
   };
 
@@ -116,10 +140,10 @@ export default function UsersPage() {
 
      
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_350px]">
+      <div className="grid min-h-0 gap-6 lg:min-h-[calc(100vh-18rem)] lg:grid-cols-[1fr_350px]">
         {/* Table Section */}
-        <div className="glass-panel flex flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-          <div className="overflow-x-auto">
+        <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
+          <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/30">
@@ -127,7 +151,7 @@ export default function UsersPage() {
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">User Details</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Role</th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">Joined Date</th>
-                  <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
+                  {/* <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th> */}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -141,13 +165,13 @@ export default function UsersPage() {
                       </td>
                       <td className="px-6 py-5"><div className="h-6 w-20 rounded-full bg-slate-100" /></td>
                       <td className="px-6 py-5"><div className="h-4 w-24 rounded bg-slate-100" /></td>
-                      <td className="px-6 py-5"><div className="h-4 w-12 ml-auto rounded bg-slate-100" /></td>
+                      {/* <td className="px-6 py-5"><div className="h-4 w-12 ml-auto rounded bg-slate-100" /></td> */}
                     </tr>
                   ))
                 ) : users.length > 0 ? (
                   users.map((user) => (
                     <tr key={user.id} className="group transition-colors hover:bg-slate-50/50">
-                      <td className="px-6 py-5 text-sm font-medium text-slate-400">#{user.id}</td>
+                      <td className="px-6 py-5 text-sm font-medium text-slate-400">{user.id}</td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col">
                           <span className="text-sm font-semibold text-slate-900">{user.name}</span>
@@ -160,12 +184,21 @@ export default function UsersPage() {
                             Admin
                           </span>
                         )}
+                        {user.role === "manager" && (
+                          <span className="inline-flex rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                            Manager
+                          </span>
+                        )}
                         {user.role === "assessor" && (
                           <span className="inline-flex rounded-full bg-sky-50 text-sky-700 border border-sky-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
                             Assessor
                           </span>
                         )}
-                      
+                        {user.role === "team_member" && (
+                          <span className="inline-flex rounded-full bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                            Team Member
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-500">
                         {user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, {
@@ -174,7 +207,7 @@ export default function UsersPage() {
                           day: 'numeric'
                         }) : "N/A"}
                       </td>
-                      <td className="px-6 py-5 text-right">
+                      {/* <td className="px-6 py-5 text-right">
                         <button
                           onClick={() => handleViewUser(user.id)}
                           className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
@@ -182,7 +215,7 @@ export default function UsersPage() {
                         >
                           <FiEye className="h-4.5 w-4.5" />
                         </button>
-                      </td>
+                      </td> */}
                     </tr>
                   ))
                 ) : (
@@ -279,14 +312,21 @@ export default function UsersPage() {
                       <FiLock className="h-4 w-4" />
                     </span>
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                      className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-12 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
                       required
                       disabled={creating}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-4 text-slate-400 hover:text-slate-900 transition"
+                    >
+                      {showPassword ? <FiEyeOff className="h-5 w-5" /> : <FiEye className="h-5 w-5" />}
+                    </button>
                   </div>
                 </div>
 
@@ -294,19 +334,51 @@ export default function UsersPage() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Access Role</label>
                   <select
                     value={role}
-                    onChange={(e) => setRole(e.target.value)}
+                    onChange={(e) => handleRoleChange(e.target.value)}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none"
                     disabled={creating}
+                    required
                   >
-                 <option>Select a role</option> 
+                    <option value="">Select a role</option>
+                    <option value="manager">Manager</option>
                     <option value="assessor">Assessor</option>
+                    <option value="team_member">Team Member</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
 
+                {role === "team_member" && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Team</label>
+                    <select
+                      value={teamId}
+                      onChange={(e) => setTeamId(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none"
+                      disabled={creating || teamsLoading}
+                      required
+                    >
+                      <option value="">
+                        {teamsLoading ? "Loading teams..." : "Select a team"}
+                      </option>
+                      {teams.map((team) => (
+                        <option key={team.id} value={String(team.id)}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={creating || !name.trim() || !email.trim() || !password.trim()}
+                  disabled={
+                    creating ||
+                    !name.trim() ||
+                    !email.trim() ||
+                    !password.trim() ||
+                    !role ||
+                    (role === "team_member" && !teamId)
+                  }
                   className="mt-2 rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:opacity-90 disabled:opacity-50 active:scale-[0.98]"
                 >
                   {creating ? "Creating..." : "Register User"}
@@ -358,12 +430,21 @@ export default function UsersPage() {
                           Admin
                         </span>
                       )}
+                      {selectedUser.role === "manager" && (
+                        <span className="inline-flex rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                          Manager
+                        </span>
+                      )}
                       {selectedUser.role === "assessor" && (
                         <span className="inline-flex rounded-full bg-sky-50 text-sky-700 border border-sky-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
                           Assessor
                         </span>
                       )}
-                     
+                      {selectedUser.role === "team_member" && (
+                        <span className="inline-flex rounded-full bg-violet-50 text-violet-700 border border-violet-100 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1">
+                          Team Member
+                        </span>
+                      )}
                     </div>
                   </div>
 
