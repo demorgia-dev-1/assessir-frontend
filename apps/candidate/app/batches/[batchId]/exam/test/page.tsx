@@ -196,13 +196,17 @@ function ExamTestInner() {
   const uploadEvidence = useCallback(
     async (blob: Blob, fileName: string, evType: "image" | "video") => {
       try {
-        const formData = new FormData();
-        formData.append("file", blob, fileName);
-        await api.post(
-          `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(fileName)}&evType=${evType}`,
-          formData,
-          { headers: { "Content-Type": "multipart/form-data" } }
+        const res = await api.post(
+          `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(fileName)}&evType=${evType}`
         );
+        const presignedUrl = res.data?.url;
+        if (!presignedUrl) return;
+
+        await fetch(presignedUrl, {
+          method: "PUT",
+          body: blob,
+          headers: { "Content-Type": blob.type },
+        });
       } catch (err) {
         console.error(`Evidence upload failed (${evType}):`, err);
       }
@@ -263,7 +267,10 @@ function ExamTestInner() {
       : "video/mp4";
 
     try {
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 500_000,
+      });
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
@@ -307,9 +314,10 @@ function ExamTestInner() {
     }
 
     const videoEl = document.createElement("video");
-    videoEl.setAttribute("autoplay", "");
-    videoEl.setAttribute("playsinline", "");
-    videoEl.setAttribute("muted", "");
+    videoEl.autoplay = true;
+    videoEl.playsInline = true;
+    videoEl.muted = true;
+    videoEl.volume = 0;
     videoEl.style.position = "fixed";
     videoEl.style.top = "-9999px";
     videoEl.style.width = "1px";

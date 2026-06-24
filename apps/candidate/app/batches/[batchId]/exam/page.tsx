@@ -193,7 +193,7 @@ function ExamDashboardInner() {
       const uploadRes = await api.post(
         `/batches/${batchId}/exam/upload-onboarding-selfie?testType=${testType}`,
         formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
+        { timeout: 60_000 }
       );
 
       if (uploadRes.data?.error) {
@@ -456,6 +456,10 @@ function ExamDashboardInner() {
                   const test = batch[card.key];
                   if (!test) return null;
 
+                  const statusKey = `${card.key.replace("_test", "")}_exam_status` as keyof BatchData;
+                  const examStatus = batch[statusKey] as string | null | undefined;
+                  const isSubmitted = examStatus === "submitted";
+
                   const questionCount =
                     test.sections?.reduce(
                       (sum: number, s: TestSection) =>
@@ -466,17 +470,34 @@ function ExamDashboardInner() {
                   return (
                     <div
                       key={card.key}
-                      className="group flex flex-col overflow-hidden rounded-2xl border border-blue-100/80 bg-white shadow-sm transition hover:shadow-md hover:border-blue-200"
+                      className={`group flex flex-col overflow-hidden rounded-2xl border shadow-sm transition ${
+                        isSubmitted
+                          ? "border-emerald-200 bg-emerald-50/30"
+                          : "border-blue-100/80 bg-white hover:shadow-md hover:border-blue-200"
+                      }`}
                     >
                       {/* Card header */}
-                      <div className="border-b border-blue-50 bg-blue-50/40 px-6 py-4">
+                      <div className={`border-b px-6 py-4 ${
+                        isSubmitted
+                          ? "border-emerald-100 bg-emerald-50/60"
+                          : "border-blue-50 bg-blue-50/40"
+                      }`}>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
-                            {card.icon}
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${
+                            isSubmitted ? "bg-emerald-600" : "bg-blue-600"
+                          }`}>
+                            {isSubmitted ? <FiCheck className="h-5 w-5" /> : card.icon}
                           </div>
-                          <h3 className="text-sm font-bold text-slate-900">
-                            {card.label}
-                          </h3>
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900">
+                              {card.label}
+                            </h3>
+                            {isSubmitted && (
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+                                Submitted
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -516,16 +537,23 @@ function ExamDashboardInner() {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() =>
-                            handleStartTestClick(card.key, card.label)
-                          }
-                          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-                          type="button"
-                        >
-                          Start Test
-                          <FiArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                        </button>
+                        {isSubmitted ? (
+                          <div className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-100 px-5 py-3 text-sm font-semibold text-emerald-700">
+                            <FiCheck className="h-4 w-4" />
+                            Exam Submitted
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleStartTestClick(card.key, card.label)
+                            }
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                            type="button"
+                          >
+                            Start Test
+                            <FiArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
