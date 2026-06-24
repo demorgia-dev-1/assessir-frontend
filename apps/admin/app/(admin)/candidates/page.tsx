@@ -15,6 +15,7 @@ import {
   FiEye,
   FiEyeOff,
   FiRefreshCw,
+  FiUserCheck,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import api from "@/lib/api";
@@ -72,6 +73,9 @@ export default function CandidatesPage() {
   );
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [resetCandidateId, setResetCandidateId] = useState<string | number | null>(null);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceTestType, setAttendanceTestType] = useState<"theory" | "practical" | "viva">("theory");
+  const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 1000 }));
@@ -260,6 +264,34 @@ export default function CandidatesPage() {
     }
   };
 
+  const handleMarkAttendance = async () => {
+    if (!selectedBatchId || selectedIds.size === 0) return;
+    setIsMarkingAttendance(true);
+    try {
+      const res = await api.post(
+        `/batches/${selectedBatchId}/mark-attendance?testType=${attendanceTestType}`,
+        { candidate_ids: Array.from(selectedIds) }
+      );
+      if (res.data?.error) {
+        toast.error(res.data.error);
+      } else {
+        toast.success(
+          `Attendance marked for ${selectedIds.size} candidate${selectedIds.size > 1 ? "s" : ""} (${attendanceTestType}).`
+        );
+        setShowAttendanceModal(false);
+        setSelectedIds(new Set());
+      }
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        "Failed to mark attendance.";
+      toast.error(msg);
+    } finally {
+      setIsMarkingAttendance(false);
+    }
+  };
+
   const handleConfirmReset = async () => {
     if (!selectedBatchId || !resetCandidateId) return;
 
@@ -404,19 +436,29 @@ export default function CandidatesPage() {
             ) : candidates.length > 0 ? (
               <div className="overflow-hidden rounded-2xl border border-slate-150 shadow-sm">
                 {selectedIds.size > 0 && (
-                  <div className="flex items-center justify-between border-b border-red-100 bg-red-50/70 px-5 py-2.5">
-                    <span className="text-xs font-semibold text-red-700">
+                  <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-2.5">
+                    <span className="text-xs font-semibold text-slate-700">
                       {selectedIds.size} selected
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowDeleteModal(true)}
-                      disabled={deleting}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
-                    >
-                      <FiTrash2 className="h-3.5 w-3.5" />
-                      Delete Selected
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAttendanceModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                      >
+                        <FiUserCheck className="h-3.5 w-3.5" />
+                        Mark Attendance
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteModal(true)}
+                        disabled={deleting}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+                      >
+                        <FiTrash2 className="h-3.5 w-3.5" />
+                        Delete Selected
+                      </button>
+                    </div>
                   </div>
                 )}
                 <table className="w-full text-left">
@@ -934,6 +976,72 @@ export default function CandidatesPage() {
                 disabled={resetting}
               >
                 {resetting ? "Resetting…" : "Reset Candidate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Mark attendance modal */}
+      {showAttendanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay animate-in fade-in duration-200">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <FiUserCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Mark Attendance
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {selectedIds.size} Candidate{selectedIds.size > 1 ? "s" : ""} Selected
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Test Type
+              </label>
+              <select
+                value={attendanceTestType}
+                onChange={(e) => setAttendanceTestType(e.target.value as "theory" | "practical" | "viva")}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+              >
+                <option value="theory">Theory</option>
+                <option value="practical">Practical</option>
+                <option value="viva">Viva</option>
+              </select>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Mark attendance for{" "}
+              <span className="font-semibold text-slate-950">
+                {selectedIds.size} candidate{selectedIds.size > 1 ? "s" : ""}
+              </span>{" "}
+              in the{" "}
+              <span className="font-semibold text-slate-950 capitalize">
+                {attendanceTestType}
+              </span>{" "}
+              test?
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAttendanceModal(false)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+                disabled={isMarkingAttendance}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMarkAttendance}
+                className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]"
+                disabled={isMarkingAttendance}
+              >
+                {isMarkingAttendance ? "Marking…" : "Confirm Attendance"}
               </button>
             </div>
           </div>
