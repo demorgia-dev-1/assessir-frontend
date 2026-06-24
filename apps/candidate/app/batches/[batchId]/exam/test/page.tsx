@@ -1,7 +1,14 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "react-toastify";
 import {
   FiClock,
@@ -16,7 +23,7 @@ import {
 } from "react-icons/fi";
 import { useAppSelector } from "@/store/hooks";
 import api from "@/lib/api";
-import { decryptData } from "@/lib/crypto";
+import { decryptData, encryptData } from "@/lib/crypto";
 
 interface QuestionOption {
   id: number;
@@ -51,7 +58,10 @@ function ExamTestInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const batchId = params.batchId as string;
-  const testType = (searchParams.get("type") || "theory") as "theory" | "practical" | "viva";
+  const testType = (searchParams.get("type") || "theory") as
+    | "theory"
+    | "practical"
+    | "viva";
 
   const { isAuthenticated, isInitialized } = useAppSelector(
     (state) => state.auth
@@ -68,7 +78,10 @@ function ExamTestInner() {
   const questionRefs = useMemo<QuestionRef[]>(() => {
     if (!testInfo) return [];
     return testInfo.sections.flatMap((section) =>
-      section.question_ids.map((qId) => ({ questionId: qId, sectionId: section.id }))
+      section.question_ids.map((qId) => ({
+        questionId: qId,
+        sectionId: section.id,
+      }))
     );
   }, [testInfo]);
 
@@ -88,7 +101,9 @@ function ExamTestInner() {
   }, [isInitialized, isAuthenticated, testInfo, batchId, router]);
 
   // Questions cache & loading
-  const [questionsCache, setQuestionsCache] = useState<Record<number, Question>>({});
+  const [questionsCache, setQuestionsCache] = useState<
+    Record<number, Question>
+  >({});
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
 
@@ -99,14 +114,19 @@ function ExamTestInner() {
   const [answers, setAnswers] = useState<Record<number, number | string>>({});
 
   // Question Status: 'unvisited' | 'visited' | 'answered' | 'marked'
-  const [statuses, setStatuses] = useState<Record<number, "unvisited" | "visited" | "answered" | "marked">>({});
+  const [statuses, setStatuses] = useState<
+    Record<number, "unvisited" | "visited" | "answered" | "marked">
+  >({});
 
   // Initialize statuses when questionRefs become available
   useEffect(() => {
     if (questionRefs.length === 0) return;
     setStatuses((prev) => {
       if (Object.keys(prev).length > 0) return prev;
-      const initial: Record<number, "unvisited" | "visited" | "answered" | "marked"> = {};
+      const initial: Record<
+        number,
+        "unvisited" | "visited" | "answered" | "marked"
+      > = {};
       questionRefs.forEach((ref, idx) => {
         initial[ref.questionId] = idx === 0 ? "visited" : "unvisited";
       });
@@ -117,7 +137,10 @@ function ExamTestInner() {
   // Save answers to localStorage to prevent data loss on reload
   useEffect(() => {
     if (testInfo) {
-      localStorage.setItem(`answers_${batchId}_${testInfo.testId}`, JSON.stringify(answers));
+      localStorage.setItem(
+        `answers_${batchId}_${testInfo.testId}`,
+        JSON.stringify(answers)
+      );
     }
   }, [answers, batchId, testInfo]);
 
@@ -180,7 +203,8 @@ function ExamTestInner() {
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   // ── Random Evidence Capture ──────────────────────────
@@ -197,7 +221,9 @@ function ExamTestInner() {
     async (blob: Blob, fileName: string, evType: "image" | "video") => {
       try {
         const res = await api.post(
-          `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(fileName)}&evType=${evType}`
+          `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(
+            fileName
+          )}&evType=${evType}`
         );
         const presignedUrl = res.data?.url;
         if (!presignedUrl) return;
@@ -327,7 +353,11 @@ function ExamTestInner() {
 
     navigator.mediaDevices
       .getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: {
+          facingMode: "user",
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        },
         audio: true,
       })
       .then((stream) => {
@@ -400,7 +430,11 @@ function ExamTestInner() {
       if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
       stopCurrentVideoRecording();
     };
-  }, [testInfo?.isRandomEvidenceRequired, startVideoChunk, stopCurrentVideoRecording]);
+  }, [
+    testInfo?.isRandomEvidenceRequired,
+    startVideoChunk,
+    stopCurrentVideoRecording,
+  ]);
 
   // Stop evidence capture on exam completion
   const stopEvidenceCapture = useCallback(() => {
@@ -459,7 +493,9 @@ function ExamTestInner() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${h > 0 ? h + ":" : ""}${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    return `${h > 0 ? h + ":" : ""}${m.toString().padStart(2, "0")}:${s
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   const handleSelectOption = (qId: number, optIdx: number) => {
@@ -502,7 +538,9 @@ function ExamTestInner() {
       setStatuses((prev) => ({
         ...prev,
         [nextRef.questionId]:
-          prev[nextRef.questionId] === "unvisited" ? "visited" : prev[nextRef.questionId],
+          prev[nextRef.questionId] === "unvisited"
+            ? "visited"
+            : prev[nextRef.questionId],
       }));
       setCurrentIdx((prev) => prev + 1);
     }
@@ -552,8 +590,33 @@ function ExamTestInner() {
 
   // Stats calculation for review
   const answeredCount = Object.keys(answers).length;
-  const markedCount = Object.values(statuses).filter((s) => s === "marked").length;
+  const markedCount = Object.values(statuses).filter(
+    (s) => s === "marked"
+  ).length;
   const unansweredCount = questionRefs.length - answeredCount;
+
+  // Determine the next test after current one
+  const nextTestLabel =
+    testType === "theory"
+      ? "Practical"
+      : testType === "practical"
+      ? "Viva"
+      : null;
+
+  const goToDashboard = () => {
+    try {
+      const stored = sessionStorage.getItem("candidate_exam_data");
+      if (stored) {
+        const data = JSON.parse(stored);
+        data[`${testType}_exam_status`] = "submitted";
+        sessionStorage.setItem("candidate_exam_data", JSON.stringify(data));
+        const encrypted = encryptData(data);
+        router.replace(`/batches/${batchId}/exam?data=${encrypted}`);
+        return;
+      }
+    } catch {}
+    router.replace(`/batches/${batchId}/exam/login`);
+  };
 
   // Render Completed View
   if (isExamCompleted) {
@@ -574,23 +637,45 @@ function ExamTestInner() {
           </h2>
 
           <p className="mt-4 text-sm leading-relaxed text-slate-500">
-            Thank you for completing your {testType} assessment. Your exam
-            status has been updated securely. You can now close this tab.
+            Thank you for completing your{" "}
+            <span className="font-semibold text-slate-700 capitalize">
+              {testType}
+            </span>{" "}
+            assessment. Your exam status has been updated securely.
+            {nextTestLabel &&
+              ` You can now proceed to the ${nextTestLabel} test.`}
           </p>
 
-          <button
-            onClick={() => router.replace(`/batches/${batchId}/exam`)}
-            className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-200/50 hover:bg-indigo-700 transition"
-          >
-            Go to Dashboard
-          </button>
+          <div className="mt-8 flex flex-col gap-3">
+            {nextTestLabel && (
+              <button
+                onClick={goToDashboard}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-200/50 hover:bg-indigo-700 transition"
+              >
+                Start {nextTestLabel} Test
+                <FiChevronRight className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={goToDashboard}
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold transition ${
+                nextTestLabel
+                  ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  : "bg-indigo-600 text-white shadow-lg shadow-indigo-200/50 hover:bg-indigo-700"
+              }`}
+            >
+              Go to Dashboard
+            </button>
+          </div>
         </div>
       </main>
     );
   }
 
   const activeRef = questionRefs[currentIdx];
-  const activeQuestion = activeRef ? questionsCache[activeRef.questionId] : null;
+  const activeQuestion = activeRef
+    ? questionsCache[activeRef.questionId]
+    : null;
 
   // Danger limits
   const isTimeLow = timeLeft < 5 * 60;
@@ -608,7 +693,11 @@ function ExamTestInner() {
         <header className="relative z-10 bg-white border-b border-slate-100 px-6 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 shadow ring-1 ring-slate-200">
-              <img src="/logo.png" alt="Logo" className="h-6 w-6 object-contain" />
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="h-6 w-6 object-contain"
+              />
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-900 capitalize">
@@ -631,7 +720,9 @@ function ExamTestInner() {
                   : "bg-slate-50 border-slate-200 text-slate-700"
               }`}
             >
-              <FiClock className={`h-4 w-4 ${isTimeCritical ? "animate-spin" : ""}`} />
+              <FiClock
+                className={`h-4 w-4 ${isTimeCritical ? "animate-spin" : ""}`}
+              />
               <span>{formatTime(timeLeft)}</span>
             </div>
 
@@ -671,7 +762,9 @@ function ExamTestInner() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  <p className="text-sm text-slate-500 font-medium">Loading question...</p>
+                  <p className="text-sm text-slate-500 font-medium">
+                    Loading question...
+                  </p>
                 </div>
               ) : (
                 <>
@@ -696,39 +789,42 @@ function ExamTestInner() {
                   {activeQuestion.type === "mcq" &&
                     activeQuestion.metadata?.options &&
                     activeQuestion.metadata.options.length > 0 && (
-                    <div className="space-y-3">
-                      {activeQuestion.metadata.options.map((opt, optIdx) => {
-                        const isSelected = answers[activeQuestion.id] === optIdx;
-                        return (
-                          <button
-                            key={opt.id}
-                            onClick={() => handleSelectOption(activeQuestion.id, optIdx)}
-                            className={`w-full flex items-center justify-between border rounded-2xl p-4 text-left transition duration-200 group text-sm ${
-                              isSelected
-                                ? "bg-indigo-50/50 border-indigo-500 text-indigo-900 font-semibold"
-                                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50/70 hover:border-slate-300"
-                            }`}
-                          >
-                            <div className="flex items-center gap-4">
-                              <div
-                                className={`flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold transition duration-200 ${
-                                  isSelected
-                                    ? "bg-indigo-600 border-indigo-600 text-white"
-                                    : "border-slate-300 bg-slate-50 text-slate-500 group-hover:border-slate-400"
-                                }`}
-                              >
-                                {String.fromCharCode(65 + optIdx)}
+                      <div className="space-y-3">
+                        {activeQuestion.metadata.options.map((opt, optIdx) => {
+                          const isSelected =
+                            answers[activeQuestion.id] === optIdx;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() =>
+                                handleSelectOption(activeQuestion.id, optIdx)
+                              }
+                              className={`w-full flex items-center justify-between border rounded-2xl p-4 text-left transition duration-200 group text-sm ${
+                                isSelected
+                                  ? "bg-indigo-50/50 border-indigo-500 text-indigo-900 font-semibold"
+                                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50/70 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div
+                                  className={`flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold transition duration-200 ${
+                                    isSelected
+                                      ? "bg-indigo-600 border-indigo-600 text-white"
+                                      : "border-slate-300 bg-slate-50 text-slate-500 group-hover:border-slate-400"
+                                  }`}
+                                >
+                                  {String.fromCharCode(65 + optIdx)}
+                                </div>
+                                <span>{opt.text}</span>
                               </div>
-                              <span>{opt.text}</span>
-                            </div>
-                            {isSelected && (
-                              <FiCheck className="h-4 w-4 text-indigo-600 shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                              {isSelected && (
+                                <FiCheck className="h-4 w-4 text-indigo-600 shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                   {/* Text Area Input (non-MCQ) */}
                   {activeQuestion.type !== "mcq" && (
@@ -901,7 +997,9 @@ function ExamTestInner() {
               {/* Stats table */}
               <div className="my-6 grid grid-cols-3 gap-2 border border-slate-100 rounded-2xl p-4 bg-slate-50 text-center">
                 <div>
-                  <p className="text-xs text-slate-400 font-semibold">Answered</p>
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Answered
+                  </p>
                   <p className="mt-1 text-lg font-bold text-emerald-600">
                     {answeredCount}
                   </p>
@@ -913,7 +1011,9 @@ function ExamTestInner() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-semibold">Remaining</p>
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Remaining
+                  </p>
                   <p className="mt-1 text-lg font-bold text-slate-600">
                     {unansweredCount}
                   </p>

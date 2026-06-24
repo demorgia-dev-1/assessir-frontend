@@ -266,7 +266,7 @@ function ExamDashboardInner() {
         timeInMinutes: testData!.time_in_minutes,
         isRandomEvidenceRequired: testData!.is_random_evidence_required ?? false,
       });
-      router.push(
+      router.replace(
         `/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`
       );
     } catch (error: any) {
@@ -456,7 +456,8 @@ function ExamDashboardInner() {
                   const test = batch[card.key];
                   if (!test) return null;
 
-                  const statusKey = `${card.key.replace("_test", "")}_exam_status` as keyof BatchData;
+                  const testType = card.key.replace("_test", "");
+                  const statusKey = `${testType}_exam_status` as keyof BatchData;
                   const examStatus = batch[statusKey] as string | null | undefined;
                   const isSubmitted = examStatus === "submitted";
 
