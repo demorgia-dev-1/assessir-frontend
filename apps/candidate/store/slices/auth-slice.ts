@@ -88,7 +88,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
 });
 
 export const loginCandidateAction = createAsyncThunk<
-  { batch: any | null; session: CandidateSessionPayload | null; token: string },
+  { batch: any | null; examMeta: any | null; session: CandidateSessionPayload | null; token: string },
   { batchId: string; enrollment_no: string; password: string },
   { rejectValue: string }
 >(
@@ -101,23 +101,25 @@ export const loginCandidateAction = createAsyncThunk<
       });
 
       const data = response.data;
-      const token = data.token || data; // Handle both object and string response
+      const token = data.token || data;
 
       if (typeof token !== "string") {
         throw new Error("Invalid token received from server");
       }
 
-      Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
+      Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 });
       const session = parseJwt(token);
 
-      // Persist batch details to sessionStorage
       const batch = data.batch || null;
       if (batch && typeof window !== "undefined") {
         sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
       }
 
+      const { token: _t, batch: _b, ...examMeta } = data;
+
       return {
         batch,
+        examMeta,
         session,
         token,
       };

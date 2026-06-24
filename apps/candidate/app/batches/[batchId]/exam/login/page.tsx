@@ -41,7 +41,10 @@ export default function CandidateLoginPage() {
 
       if (loginCandidateAction.fulfilled.match(resultAction)) {
         toast.success("Login successful! Preparing your exam…");
-        const encrypted = encryptData(resultAction.payload.batch);
+        const encrypted = encryptData({
+          ...resultAction.payload.batch,
+          ...resultAction.payload.examMeta,
+        });
         router.push(`/batches/${batchId}/exam?data=${encrypted}`);
       } else {
         const errorMsg =
