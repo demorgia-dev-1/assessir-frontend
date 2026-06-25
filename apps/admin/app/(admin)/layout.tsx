@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { initializeAuth, logoutAdminAction } from "@/store/slices/auth-slice";
 
@@ -203,6 +203,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, isInitialized, router]);
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
   const handleLogout = () => {
     dispatch(logoutAdminAction());
     router.replace("/");
@@ -220,8 +226,110 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
+      {/* Mobile top bar */}
+      <div className="mb-4 flex items-center justify-between lg:hidden">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 p-1.5 shadow-sm">
+            <img
+              src="/logo.png"
+              alt="Asses-Sir Logo"
+              className="h-full w-full object-contain"
+            />
+          </div>
+          <span className="text-sm font-semibold text-slate-900">
+            Admin Console
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(true)}
+          className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition hover:bg-slate-50"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside className="mesh-panel relative ml-auto flex h-full w-[300px] max-w-[85vw] flex-col overflow-y-auto border-l border-slate-900/10 p-6 text-white shadow-2xl">
+            <div className="grid-overlay absolute inset-0 opacity-30" />
+            <div className="relative z-10 flex h-full flex-col">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm shadow-slate-950/10">
+                    <img
+                      src="/logo.png"
+                      alt="Asses-Sir Logo"
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">
+                      Asses-Sir
+                    </p>
+                    <h1 className="text-base font-semibold text-white">
+                      Admin Console
+                    </h1>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(false)}
+                  className="rounded-xl bg-white/10 p-2 text-white transition hover:bg-white/20"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mt-8 flex flex-1 flex-col gap-2">
+                {navigationItems.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition ${
+                        isActive
+                          ? "bg-white text-slate-950 shadow-lg shadow-slate-950/10"
+                          : "text-slate-200 hover:bg-white/10 hover:text-white"
+                      }`}
+                      href={item.href}
+                    >
+                      <span>{item.icon}</span>
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-slate-950/30 p-5 backdrop-blur-sm">
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {session?.role ?? "admin"}
+                </p>
+                <button
+                  className="mt-5 w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/18"
+                  onClick={handleLogout}
+                  type="button"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
+
       <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1700px] gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="mesh-panel relative overflow-hidden rounded-[2rem] border border-slate-900/10 p-6 text-white shadow-soft">
+        {/* Desktop sidebar */}
+        <aside className="mesh-panel relative hidden overflow-hidden rounded-[2rem] border border-slate-900/10 p-6 text-white shadow-soft lg:block">
           <div className="grid-overlay absolute inset-0 opacity-30" />
           <div className="relative z-10 flex h-full flex-col">
             <div>
@@ -247,7 +355,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <div className="mt-8 flex flex-1 flex-col gap-2">
               {navigationItems.map((item) => {
                 const isActive = pathname === item.href;
-
                 return (
                   <Link
                     key={item.href}
@@ -266,15 +373,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-slate-950/30 p-5 backdrop-blur-sm">
-              {/* <p className="text-xs uppercase tracking-[0.22em] text-slate-300">
-                Session
-              </p> */}
               <p className="mt-2 text-sm font-semibold text-white">
                 {session?.role ?? "admin"}
               </p>
-              {/* <p className="mt-2 text-sm text-slate-300">
-                Cookie-based session active for Assessir operations.
-              </p> */}
               <button
                 className="mt-5 w-full rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/18"
                 onClick={handleLogout}

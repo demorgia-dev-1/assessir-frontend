@@ -17,6 +17,7 @@ import {
 import { useAppSelector } from "@/store/hooks";
 import api from "@/lib/api";
 import { decryptData } from "@/lib/crypto";
+import { useAiProctoring } from "@/hooks/useAiProctoring";
 
 interface QuestionOption {
   id: number;
@@ -186,6 +187,15 @@ function ExamTestInner() {
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [isSubmittingApi, setIsSubmittingApi] = useState(false);
   const [isExamCompleted, setIsExamCompleted] = useState(false);
+
+  // AI proctoring — active while the exam is in progress
+  const aiEnabled =
+    isInitialized && isAuthenticated && !!testInfo && !isExamCompleted;
+  const {
+    status: aiStatus,
+    violationCount: aiViolations,
+    lastViolation: aiLastViolation,
+  } = useAiProctoring(aiEnabled);
 
   // Submit a single answer to the API
   const submitAnswer = useCallback(
@@ -385,7 +395,44 @@ function ExamTestInner() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center justify-between gap-3 sm:gap-6">
+            {/* AI Proctoring status */}
+            <div
+              className={`hidden sm:flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition ${
+                aiStatus === "active"
+                  ? aiViolations > 0
+                    ? "bg-red-50 border-red-200 text-red-600"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-600"
+                  : aiStatus === "error"
+                  ? "bg-amber-50 border-amber-200 text-amber-600"
+                  : "bg-slate-50 border-slate-200 text-slate-500"
+              }`}
+              title={aiLastViolation || "AI Proctoring"}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  aiStatus === "active"
+                    ? aiViolations > 0
+                      ? "bg-red-500 animate-pulse"
+                      : "bg-emerald-500 animate-pulse"
+                    : aiStatus === "error"
+                    ? "bg-amber-500"
+                    : "bg-slate-400 animate-pulse"
+                }`}
+              />
+              <span>
+                {aiStatus === "active"
+                  ? aiViolations > 0
+                    ? `AI · ${aiViolations} alert${aiViolations > 1 ? "s" : ""}`
+                    : "AI Active"
+                  : aiStatus === "initializing"
+                  ? "AI Loading…"
+                  : aiStatus === "error"
+                  ? "AI Off"
+                  : "AI"}
+              </span>
+            </div>
+
             {/* Countdown Clock */}
             <div
               className={`flex items-center gap-2 px-4 py-2 rounded-2xl border transition duration-300 font-mono text-sm font-bold ${
@@ -636,10 +683,36 @@ function ExamTestInner() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-2xl bg-indigo-50/40 border border-indigo-100/50 p-3 text-[10px] text-indigo-700">
-                <FiShield className="h-4 w-4 shrink-0 text-indigo-500" />
+              <div
+                className={`flex items-center gap-2.5 rounded-2xl border p-3 text-[10px] ${
+                  aiStatus === "active" && aiViolations > 0
+                    ? "bg-red-50/60 border-red-100 text-red-700"
+                    : aiStatus === "error"
+                    ? "bg-amber-50/60 border-amber-100 text-amber-700"
+                    : "bg-indigo-50/40 border-indigo-100/50 text-indigo-700"
+                }`}
+              >
+                <FiShield
+                  className={`h-4 w-4 shrink-0 ${
+                    aiStatus === "active" && aiViolations > 0
+                      ? "text-red-500"
+                      : aiStatus === "error"
+                      ? "text-amber-500"
+                      : "text-indigo-500"
+                  }`}
+                />
                 <span>
-                  AI Proctoring is actively monitoring your browser activity.
+                  {aiStatus === "active"
+                    ? aiViolations > 0
+                      ? `AI Proctor flagged ${aiViolations} suspicious event${
+                          aiViolations > 1 ? "s" : ""
+                        }${aiLastViolation ? `: ${aiLastViolation}` : "."}`
+                      : "AI Proctoring is active — face, objects and audio are being monitored."
+                    : aiStatus === "initializing"
+                    ? "AI Proctoring is loading… camera and mic access required."
+                    : aiStatus === "error"
+                    ? "AI Proctoring unavailable. Please allow camera & mic permissions."
+                    : "AI Proctoring is monitoring your browser activity."}
                 </span>
               </div>
             </div>
