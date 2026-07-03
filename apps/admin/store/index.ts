@@ -8,6 +8,7 @@ import topicReducer from "@/store/slices/topics-slice";
 import questionsReducer from "@/store/slices/questions-slice";
 import batchesReducer from "@/store/slices/batches-slice";
 import candidatesReducer from "@/store/slices/candidates-slice";
+import reportsReducer from "@/store/slices/reports-slice";
 
 export const makeStore = () =>
   configureStore({
@@ -21,6 +22,7 @@ export const makeStore = () =>
       questions: questionsReducer,
       batches: batchesReducer,
       candidates: candidatesReducer,
+      reports: reportsReducer,
     },
   });
 

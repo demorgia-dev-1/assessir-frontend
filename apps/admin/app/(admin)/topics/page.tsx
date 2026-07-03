@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { FiAlertTriangle, FiEdit2, FiEye, FiTrash2, FiX } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import Tooltip from "@/components/Tooltip";
 import {
   clearError,
   clearSelectedTopic,
@@ -216,28 +217,31 @@ export default function TopicsPage() {
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => handleViewTopic(topic.id)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="View Details"
-                          >
-                            <FiEye className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleEditTopic(topic)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="Edit Topic"
-                          >
-                            <FiEdit2 className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTopicClick(topic)}
-                            disabled={deleting}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete Topic"
-                          >
-                            <FiTrash2 className="h-4.5 w-4.5" />
-                          </button>
+                          <Tooltip label="View Details">
+                            <button
+                              onClick={() => handleViewTopic(topic.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEye className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Edit Topic">
+                            <button
+                              onClick={() => handleEditTopic(topic)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEdit2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Delete Topic">
+                            <button
+                              onClick={() => handleDeleteTopicClick(topic)}
+                              disabled={deleting}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <FiTrash2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>

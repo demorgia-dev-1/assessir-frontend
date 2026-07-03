@@ -132,6 +132,24 @@ const navigationItems = [
     ),
   },
   {
+    href: "/reports",
+    label: "Reports",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="M4 19.5V6.75A1.75 1.75 0 0 1 5.75 5h12.5A1.75 1.75 0 0 1 20 6.75V19.5" />
+        <path d="M8 13l2.5 2.5L16 10" />
+        <path d="M4 19.5h16" />
+      </svg>
+    ),
+  },
+  {
     href: "/users",
     label: "Users",
     icon: (

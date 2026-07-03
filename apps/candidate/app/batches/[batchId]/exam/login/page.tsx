@@ -145,10 +145,10 @@ export default function CandidateLoginPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    Instant Results
+                    Results After Review
                   </p>
                   <p className="text-xs text-slate-500">
-                    Get your score immediately after submission
+                    Your responses are evaluated and results published later
                   </p>
                 </div>
               </div>
