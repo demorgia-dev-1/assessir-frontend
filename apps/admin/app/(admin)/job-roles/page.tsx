@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import Tooltip from "@/components/Tooltip";
 import {
   fetchJobRoles,
   updateJobRole,
@@ -313,28 +314,31 @@ export default function JobRolesPage() {
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => handleViewJobRole(jobRole.id)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="View Details"
-                          >
-                            <FiEye className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleEditJobRole(jobRole)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="Edit Job Role"
-                          >
-                            <FiEdit2 className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteJobRoleClick(jobRole)}
-                            disabled={deleting}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete Job Role"
-                          >
-                            <FiTrash2 className="h-4.5 w-4.5" />
-                          </button>
+                          <Tooltip label="View Details">
+                            <button
+                              onClick={() => handleViewJobRole(jobRole.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEye className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Edit Job Role">
+                            <button
+                              onClick={() => handleEditJobRole(jobRole)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEdit2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Delete Job Role">
+                            <button
+                              onClick={() => handleDeleteJobRoleClick(jobRole)}
+                              disabled={deleting}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <FiTrash2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>
