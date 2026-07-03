@@ -17,11 +17,14 @@ import {
 import QuestionForm, { QuestionFormValues } from "@/components/QuestionForm";
 import {
   downloadQuestionsTemplate,
+  NosSheetInfo,
   parseQuestionsExcelFile,
   ValidationError,
 } from "@/lib/questions-import";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { fetchTopics } from "@/store/slices/topics-slice";
+import Tooltip from "@/components/Tooltip";
+import { fetchJobRoles, JobRoleNos } from "@/store/slices/jobroles-slice";
+import api from "@/lib/api";
 import {
   clearError,
   clearSelectedQuestion,
@@ -54,7 +57,8 @@ function createEmptyForm(): QuestionFormValues {
     text: "",
     type: "mcq",
     difficultyLvl: "easy",
-    topicID: "",
+    jobRoleID: "",
+    nosID: "",
     metadata: {
       options: DEFAULT_OPTIONS.map((option) => ({ ...option })),
       scores: DEFAULT_SCORES.map((score) => ({ ...score })),
@@ -87,11 +91,14 @@ function normalizeQuestionForm(question: Question): QuestionFormValues {
       ? { options: DEFAULT_OPTIONS, scores: DEFAULT_SCORES }
       : question.metadata || {};
 
+  const jobRoleId = question.nos?.job_role_id ?? question.nos?.JobRoleID ?? "";
+
   return {
     text: question.text,
     type: question.type,
     difficultyLvl: question.difficultyLvl,
-    topicID: String(question.topicID),
+    jobRoleID: jobRoleId ? String(jobRoleId) : "",
+    nosID: question.nosID ? String(question.nosID) : "",
     metadata: {
       options: metadata.options?.length
         ? metadata.options.map((option) => ({ ...option }))
@@ -108,7 +115,7 @@ function buildCreatePayload(values: QuestionFormValues) {
     text: values.text.trim(),
     type: values.type,
     difficulty_lvl: values.difficultyLvl,
-    topic_id: Number(values.topicID),
+    nos_id: Number(values.nosID),
     metadata:
       values.type === "mcq"
         ? {
@@ -137,7 +144,7 @@ function buildUpdatePayload(id: string | number, values: QuestionFormValues) {
     text: createPayload.text,
     type: createPayload.type,
     difficultyLvl: values.difficultyLvl,
-    topicID: Number(values.topicID),
+    nos_id: Number(values.nosID),
     metadata: createPayload.metadata,
   };
 }
@@ -147,8 +154,12 @@ function validateForm(values: QuestionFormValues) {
     return "Question text is required.";
   }
 
-  if (!values.topicID) {
-    return "Please select a topic.";
+  if (!values.jobRoleID) {
+    return "Please select a job role.";
+  }
+
+  if (!values.nosID) {
+    return "Please select a NOS.";
   }
 
   if (values.type === "mcq") {
@@ -210,7 +221,7 @@ export default function QuestionsPage() {
     hasNext,
     hasPrev,
   } = useAppSelector((state) => state.questions);
-  const { topics } = useAppSelector((state) => state.topics);
+  const { jobRoles } = useAppSelector((state) => state.jobRoles);
 
   const [panelMode, setPanelMode] = useState<"bulk" | "view">("bulk");
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -228,7 +239,9 @@ export default function QuestionsPage() {
     null
   );
   const [dragActive, setDragActive] = useState(false);
-  const [bulkTopicID, setBulkTopicID] = useState("");
+  const [bulkJobRoleID, setBulkJobRoleID] = useState("");
+  const [bulkNosList, setBulkNosList] = useState<NosSheetInfo[]>([]);
+  const [bulkNosLoading, setBulkNosLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedQuestions, setParsedQuestions] = useState<CreateQuestionInput[]>(
     []
@@ -239,7 +252,7 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     dispatch(fetchQuestions({ page: 1, limit: 10 }));
-    dispatch(fetchTopics({ page: 1, limit: 1000 }));
+    dispatch(fetchJobRoles({ page: 1, limit: 1000 }));
   }, [dispatch]);
 
   useEffect(() => {
@@ -250,6 +263,50 @@ export default function QuestionsPage() {
     toast.error(error, { toastId: error });
     dispatch(clearError());
   }, [dispatch, error]);
+
+  // Load the selected job role's NOS list for the bulk template/import. The
+  // template creates one sheet per NOS (named by code); the code maps to nos_id.
+  useEffect(() => {
+    if (!bulkJobRoleID) {
+      setBulkNosList([]);
+      return;
+    }
+
+    let active = true;
+    setBulkNosLoading(true);
+    api
+      .get(`/jobroles/${bulkJobRoleID}`)
+      .then((response) => {
+        const data =
+          response.data?.jobrole ?? response.data?.jobRole ?? response.data;
+        const list: JobRoleNos[] = data?.nos_list ?? [];
+        if (active) {
+          setBulkNosList(
+            list
+              .filter((nos) => nos.id != null && (nos.code || nos.nos_code))
+              .map((nos) => ({
+                id: nos.id as string | number,
+                code: String(nos.code || nos.nos_code),
+                name: nos.name,
+              }))
+          );
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setBulkNosList([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setBulkNosLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [bulkJobRoleID]);
 
   const criticalErrors = useMemo(
     () => validationErrors.filter((item) => item.type === "error"),
@@ -392,8 +449,8 @@ export default function QuestionsPage() {
   };
 
   const processFile = (file: File) => {
-    if (!bulkTopicID) {
-      toast.error("Please select a topic before uploading questions.");
+    if (!bulkJobRoleID) {
+      toast.error("Please select a job role before uploading questions.");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -418,7 +475,7 @@ export default function QuestionsPage() {
         return;
       }
 
-      const result = parseQuestionsExcelFile(arrayBuffer, Number(bulkTopicID));
+      const result = parseQuestionsExcelFile(arrayBuffer, bulkNosList);
       setParsedQuestions(result.questions.map((question) => ({ ...question })));
       setValidationErrors(result.errors);
     };
@@ -426,9 +483,33 @@ export default function QuestionsPage() {
     reader.readAsArrayBuffer(file);
   };
 
+  const handleDownloadTemplate = async () => {
+    if (!bulkJobRoleID) {
+      toast.error("Please select a job role before downloading the template.");
+      return;
+    }
+    if (!bulkNosList.length) {
+      toast.error("The selected job role has no NOS to build a template.");
+      return;
+    }
+    try {
+      await downloadQuestionsTemplate(bulkNosList);
+    } catch {
+      toast.error("Failed to generate the template.");
+    }
+  };
+
+  const handleBulkJobRoleChange = (jobRoleId: string) => {
+    setBulkJobRoleID(jobRoleId);
+    setSelectedFile(null);
+    setParsedQuestions([]);
+    setValidationErrors([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleBulkImport = async () => {
-    if (!bulkTopicID) {
-      toast.error("Please select a topic before importing questions.");
+    if (!bulkJobRoleID) {
+      toast.error("Please select a job role before importing questions.");
       return;
     }
 
@@ -496,7 +577,7 @@ export default function QuestionsPage() {
                     Type
                   </th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Topic
+                    NOS
                   </th>
                   <th className="px-6 py-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Difficulty
@@ -548,12 +629,10 @@ export default function QuestionsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-5 text-sm text-slate-700">
-                        {question.topic?.name ||
-                          topics.find(
-                            (topic) =>
-                              String(topic.id) === String(question.topicID)
-                          )?.name ||
-                          `Topic ${question.topicID}`}
+                        {question.nos?.code ||
+                          question.nos?.nos_code ||
+                          question.nos?.name ||
+                          `NOS ${question.nosID}`}
                       </td>
                       <td className="px-6 py-5 text-sm capitalize text-slate-600">
                         {question.difficultyLvl}
@@ -565,28 +644,33 @@ export default function QuestionsPage() {
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => handleViewQuestion(question.id)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="View Question"
-                          >
-                            <FiEye className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleOpenEditModal(question)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="Edit Question"
-                          >
-                            <FiEdit2 className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteQuestionClick(question)}
-                            disabled={deleting}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete Question"
-                          >
-                            <FiTrash2 className="h-4.5 w-4.5" />
-                          </button>
+                          <Tooltip label="View Question">
+                            <button
+                              onClick={() => handleViewQuestion(question.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEye className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Edit Question">
+                            <button
+                              onClick={() => handleOpenEditModal(question)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEdit2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Delete Question">
+                            <button
+                              onClick={() =>
+                                handleDeleteQuestionClick(question)
+                              }
+                              disabled={deleting}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <FiTrash2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>
@@ -680,54 +764,60 @@ export default function QuestionsPage() {
 
           {panelMode === "bulk" && (
             <div className="glass-panel rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold tracking-tight text-slate-950">
-                    Bulk Import Questions
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Upload an Excel sheet to create multiple `mcq` and `rubric`
-                    questions in one request. The topic selected here is applied
-                    to every imported question.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={downloadQuestionsTemplate}
-                  className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  <FiDownload className="mr-2 h-4 w-4" />
-                  Template
-                </button>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Bulk Import Questions
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Pick a job role, then download its template. It has one sheet
+                  per NOS (named by code); on each row pick the `type` from the
+                  dropdown (`mcq` or `rubric`), fill that type&apos;s columns,
+                  and upload to import.
+                </p>
               </div>
 
               <div className="mt-6 flex flex-col gap-2">
                 <label className="ml-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Topic For Imported Questions
+                  Job Role For Imported Questions
                 </label>
-                <select
-                  value={bulkTopicID}
-                  onChange={(event) => {
-                    const topicID = event.target.value;
-                    setBulkTopicID(topicID);
-                    if (topicID) {
-                      setParsedQuestions((current) =>
-                        current.map((question) => ({
-                          ...question,
-                          topic_id: Number(topicID),
-                        }))
-                      );
+                <div className="flex items-stretch gap-2">
+                  <select
+                    value={bulkJobRoleID}
+                    onChange={(event) =>
+                      handleBulkJobRoleChange(event.target.value)
                     }
-                  }}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
-                >
-                  <option value="">Select a topic</option>
-                  {topics.map((topic) => (
-                    <option key={topic.id} value={String(topic.id)}>
-                      {topic.name}
-                    </option>
-                  ))}
-                </select>
+                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                  >
+                    <option value="">Select a job role</option>
+                    {jobRoles.map((jobRole) => (
+                      <option key={jobRole.id} value={String(jobRole.id)}>
+                        {jobRole.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    disabled={
+                      !bulkJobRoleID || bulkNosLoading || !bulkNosList.length
+                    }
+                    className="mr-1 inline-flex shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-2 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FiDownload className="mr-2 h-4 w-4" />
+                    Template
+                  </button>
+                </div>
+                {bulkJobRoleID && (
+                  <p className="ml-1 text-[11px] text-slate-500">
+                    {bulkNosLoading
+                      ? "Loading NOS..."
+                      : bulkNosList.length
+                      ? `${bulkNosList.length} NOS sheet${
+                          bulkNosList.length > 1 ? "s" : ""
+                        }: ${bulkNosList.map((nos) => nos.code).join(", ")}`
+                      : "No NOS found for this job role."}
+                  </p>
+                )}
               </div>
 
               <div
@@ -843,10 +933,7 @@ export default function QuestionsPage() {
                             {question.difficulty_lvl}
                           </span>
                           <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
-                            {topics.find(
-                              (topic) =>
-                                String(topic.id) === String(question.topic_id)
-                            )?.name || "Selected topic"}
+                            NOS {question.nos_id}
                           </span>
                         </div>
                      <p className="mt-3 text-sm font-semibold text-slate-900">
@@ -945,16 +1032,13 @@ export default function QuestionsPage() {
 
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Topic
+                      NOS
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-950">
-                      {selectedQuestion.topic?.name ||
-                        topics.find(
-                          (topic) =>
-                            String(topic.id) ===
-                            String(selectedQuestion.topicID)
-                        )?.name ||
-                        `Topic ${selectedQuestion.topicID}`}
+                      {selectedQuestion.nos?.code ||
+                        selectedQuestion.nos?.nos_code ||
+                        selectedQuestion.nos?.name ||
+                        `NOS ${selectedQuestion.nosID}`}
                     </p>
                   </div>
 
@@ -1045,7 +1129,7 @@ export default function QuestionsPage() {
             <QuestionForm
               title="Create Questions"
               description="Draft one or more MCQ or rubric questions in this modal, then save them together in a single request."
-              topics={topics}
+              jobRoles={jobRoles}
               value={activeCreateForm}
               onChange={updateActiveCreateForm}
               onSubmit={handleCreateQuestion}
@@ -1085,7 +1169,7 @@ export default function QuestionsPage() {
             <QuestionForm
               title="Edit Question"
               description="Update question content, metadata, and formatting before saving."
-              topics={topics}
+              jobRoles={jobRoles}
               value={editForm}
               questionId={questionToEdit.id}
               onChange={setEditForm}

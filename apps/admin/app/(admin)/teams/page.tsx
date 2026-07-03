@@ -13,6 +13,7 @@ import {
 } from "@/store/slices/teams-slice";
 import { fetchUsers } from "@/store/slices/users-slice";
 import { fetchSectors } from "@/store/slices/sectors-slice";
+import Tooltip from "@/components/Tooltip";
 import { toast } from "react-toastify";
 import {
   FiEye,
@@ -329,20 +330,22 @@ export default function TeamsPage() {
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => handleViewTeam(team.id)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="View Team Details"
-                          >
-                            <FiEye className="h-4.5 w-4.5" />
-                          </button>
-                          <button
-                            onClick={() => handleEditTeamClick(team)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="Edit Team"
-                          >
-                            <FiEdit2 className="h-4.5 w-4.5" />
-                          </button>
+                          <Tooltip label="View Team Details">
+                            <button
+                              onClick={() => handleViewTeam(team.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEye className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Edit Team">
+                            <button
+                              onClick={() => handleEditTeamClick(team)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEdit2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>

@@ -1,6 +1,5 @@
 import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import api from "@/lib/api";
-import type { Topic } from "@/store/slices/topics-slice";
 
 export type QuestionType = "mcq" | "rubric";
 export type DifficultyLevel = "easy" | "medium" | "hard";
@@ -23,14 +22,23 @@ export type QuestionMetadata =
   | string
   | null;
 
+export type QuestionNos = {
+  id: string | number;
+  name?: string;
+  code?: string;
+  nos_code?: string;
+  job_role_id?: string | number;
+  JobRoleID?: string | number;
+};
+
 export type Question = {
   id: string | number;
   text: string;
   type: QuestionType;
   difficultyLvl: DifficultyLevel;
-  topicID: string | number;
+  nosID: string | number;
   metadata: QuestionMetadata;
-  topic?: Topic | null;
+  nos?: QuestionNos | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -39,7 +47,7 @@ export type CreateQuestionInput = {
   text: string;
   type: QuestionType;
   difficulty_lvl: DifficultyLevel;
-  topic_id: number;
+  nos_id: number;
   metadata: {
     options?: McqOption[];
     scores?: RubricScore[];
@@ -51,7 +59,7 @@ export type UpdateQuestionInput = {
   text: string;
   type: QuestionType;
   difficultyLvl: DifficultyLevel;
-  topicID: number;
+  nos_id: number;
   metadata: {
     options?: McqOption[];
     scores?: RubricScore[];
@@ -62,13 +70,15 @@ export type GetQuestionsParams = {
   page?: number;
   limit?: number;
   type?: QuestionType;
-  topicID?: string | number;
+  nosID?: string | number;
 };
 
 type QuestionApiShape = Partial<Question> & {
   difficulty_lvl?: DifficultyLevel;
-  topic_id?: string | number;
-  topicID?: string | number;
+  nos_id?: string | number;
+  nosID?: string | number;
+  NOSID?: string | number;
+  nos?: QuestionNos | null;
   metadata?: QuestionMetadata;
 };
 
@@ -130,9 +140,9 @@ function normalizeQuestion(question: QuestionApiShape): Question {
     difficultyLvl: (question.difficultyLvl ??
       question.difficulty_lvl ??
       "easy") as DifficultyLevel,
-    topicID: question.topicID ?? question.topic_id ?? 0,
+    nosID: question.nosID ?? question.nos_id ?? question.NOSID ?? question.nos?.id ?? 0,
     metadata: parseMetadata(question.metadata ?? null),
-    topic: question.topic ?? null,
+    nos: question.nos ?? null,
     created_at: question.created_at,
     updated_at: question.updated_at,
   };
@@ -144,7 +154,7 @@ function buildBulkCreatePayload(questions: CreateQuestionInput[]) {
       text: question.text,
       type: question.type,
       difficulty_lvl: question.difficulty_lvl,
-      topic_id: Number(question.topic_id),
+      nos_id: Number(question.nos_id),
       metadata: question.metadata,
     })),
   };
@@ -153,9 +163,9 @@ function buildBulkCreatePayload(questions: CreateQuestionInput[]) {
 function buildUpdatePayload(question: UpdateQuestionInput) {
   return {
     difficultyLvl: question.difficultyLvl,
-    metadata: question.metadata,  
+    metadata: question.metadata,
     text: question.text,
-    topicID: Number(question.topicID),
+    nos_id: Number(question.nos_id),
     type: question.type,
   };
 }

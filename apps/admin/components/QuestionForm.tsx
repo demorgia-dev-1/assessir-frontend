@@ -4,7 +4,7 @@
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AxiosError } from "axios";
-import type { Topic } from "@/store/slices/topics-slice";
+import type { JobRole, JobRoleNos } from "@/store/slices/jobroles-slice";
 import type {
   DifficultyLevel,
   McqOption,
@@ -18,7 +18,8 @@ export type QuestionFormValues = {
   text: string;
   type: QuestionType;
   difficultyLvl: DifficultyLevel;
-  topicID: string;
+  jobRoleID: string;
+  nosID: string;
   metadata: {
     options: McqOption[];
     scores: RubricScore[];
@@ -28,7 +29,7 @@ export type QuestionFormValues = {
 interface QuestionFormProps {
   title: string;
   description: string;
-  topics: Topic[];
+  jobRoles: JobRole[];
   value: QuestionFormValues;
   questionId?: string | number;
   onChange: (value: QuestionFormValues) => void;
@@ -95,7 +96,7 @@ function updateScore(
 export default function QuestionForm({
   title,
   description,
-  topics,
+  jobRoles,
   value,
   questionId,
   onChange,
@@ -114,10 +115,52 @@ export default function QuestionForm({
   const [editorTarget, setEditorTarget] = useState<EditorTarget>("question");
   const questionEditorRef = useRef<HTMLDivElement>(null);
   const optionsRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [nosByJobRole, setNosByJobRole] = useState<
+    Record<string, JobRoleNos[]>
+  >({});
+  const [nosLoading, setNosLoading] = useState(false);
 
   useEffect(() => {
     setEditorTarget("question");
   }, [batchPositionLabel, value.type]);
+
+  // Lazy-load the NOS list for the selected job role (only the detail
+  // endpoint returns nos_list), and cache it per job role.
+  useEffect(() => {
+    const jobRoleId = value.jobRoleID;
+    if (!jobRoleId || nosByJobRole[jobRoleId]) {
+      return;
+    }
+
+    let active = true;
+    setNosLoading(true);
+    api
+      .get(`/jobroles/${jobRoleId}`)
+      .then((response) => {
+        const data =
+          response.data?.jobrole ?? response.data?.jobRole ?? response.data;
+        const list: JobRoleNos[] = data?.nos_list ?? [];
+        if (active) {
+          setNosByJobRole((current) => ({ ...current, [jobRoleId]: list }));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setNosByJobRole((current) => ({ ...current, [jobRoleId]: [] }));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setNosLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [value.jobRoleID, nosByJobRole]);
+
+  const nosOptions = value.jobRoleID ? nosByJobRole[value.jobRoleID] ?? [] : [];
 
   const setField = <K extends keyof QuestionFormValues>(
     key: K,
@@ -231,7 +274,7 @@ export default function QuestionForm({
         onSubmit={onSubmit}
         className="mt-4 flex flex-col gap-3.5 flex-1 min-h-0 overflow-hidden"
       >
-        <div className="grid gap-3 sm:grid-cols-3 shrink-0">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 shrink-0">
           <div className="flex flex-col gap-1">
             <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
               Question Type
@@ -267,17 +310,50 @@ export default function QuestionForm({
 
           <div className="flex flex-col gap-1">
             <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
-              Topic
+              Job Role
             </label>
             <select
-              value={value.topicID}
-              onChange={(event) => setField("topicID", event.target.value)}
+              value={value.jobRoleID}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  jobRoleID: event.target.value,
+                  nosID: "",
+                })
+              }
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
             >
-              <option value="">Select a topic</option>
-              {topics.map((topic) => (
-                <option key={topic.id} value={String(topic.id)}>
-                  {topic.name}
+              <option value="">Select a job role</option>
+              {jobRoles.map((jobRole) => (
+                <option key={jobRole.id} value={String(jobRole.id)}>
+                  {jobRole.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+              NOS
+            </label>
+            <select
+              value={value.nosID}
+              onChange={(event) => setField("nosID", event.target.value)}
+              disabled={!value.jobRoleID || nosLoading}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="">
+                {!value.jobRoleID
+                  ? "Select a job role first"
+                  : nosLoading
+                  ? "Loading NOS..."
+                  : nosOptions.length
+                  ? "Select a NOS"
+                  : "No NOS found for this job role"}
+              </option>
+              {nosOptions.map((nos) => (
+                <option key={String(nos.id)} value={String(nos.id)}>
+                  {nos.code || `NOS ${nos.id}`}
                 </option>
               ))}
             </select>

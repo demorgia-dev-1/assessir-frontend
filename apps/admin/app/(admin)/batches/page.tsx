@@ -63,6 +63,7 @@ import {
 import { fetchSectors } from "@/store/slices/sectors-slice";
 import { fetchTopics } from "@/store/slices/topics-slice";
 import api from "@/lib/api";
+import Tooltip from "@/components/Tooltip";
 
 type PcForm = {
   topic_id: string;
@@ -327,16 +328,13 @@ function buildPayload(form: BatchFormState): BatchPayload | null {
     is_authorization_required_in_viva: form.is_authorization_required_in_viva,
     is_onboarding_selfie_required_theory:
       form.is_onboarding_selfie_required_theory,
-    is_random_evidence_required_theory:
-      form.is_random_evidence_required_theory,
+    is_random_evidence_required_theory: form.is_random_evidence_required_theory,
     is_onboarding_selfie_required_practical:
       form.is_onboarding_selfie_required_practical,
     is_random_evidence_required_practical:
       form.is_random_evidence_required_practical,
-    is_onboarding_selfie_required_viva:
-      form.is_onboarding_selfie_required_viva,
-    is_random_evidence_required_viva:
-      form.is_random_evidence_required_viva,
+    is_onboarding_selfie_required_viva: form.is_onboarding_selfie_required_viva,
+    is_random_evidence_required_viva: form.is_random_evidence_required_viva,
     sections,
   };
 }
@@ -399,8 +397,12 @@ export default function BatchesPage() {
   const [excelParsedCandidates, setExcelParsedCandidates] = useState<
     Array<{ enrollment_no: string; password: string }>
   >([]);
-  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({});
-  const [loadingPasswords, setLoadingPasswords] = useState<Record<string, boolean>>({});
+  const [revealedPasswords, setRevealedPasswords] = useState<
+    Record<string, string>
+  >({});
+  const [loadingPasswords, setLoadingPasswords] = useState<
+    Record<string, boolean>
+  >({});
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [schedulingBatchId, setSchedulingBatchId] = useState<
     string | number | null
@@ -574,6 +576,19 @@ export default function BatchesPage() {
 
   const refreshBatches = () => {
     dispatch(fetchBatches({ page: currentPage, limit: 10 }));
+  };
+
+  const handleCopyExamLink = async (batchId: string | number) => {
+    const baseUrl =
+      process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || "http://localhost:3002";
+    const examLink = `${baseUrl}/batches/${batchId}/exam/login`;
+
+    try {
+      await navigator.clipboard.writeText(examLink);
+      toast.success("Exam link copied to clipboard.");
+    } catch {
+      toast.error("Failed to copy exam link.");
+    }
   };
 
   const handleOpenSlotModal = (batchId: string | number) => {
@@ -817,11 +832,18 @@ export default function BatchesPage() {
 
     setLoadingPasswords((prev) => ({ ...prev, [enrollmentNo]: true }));
     try {
-      const response = await api.post(`/batches/${selectedBatch.id}/show-password`, {
-        enrollment_no: enrollmentNo,
-      });
+      const response = await api.post(
+        `/batches/${selectedBatch.id}/show-password`,
+        {
+          enrollment_no: enrollmentNo,
+        }
+      );
 
-      const pwd = response.data?.password || response.data?.Password || response.data?.data?.password || "";
+      const pwd =
+        response.data?.password ||
+        response.data?.Password ||
+        response.data?.data?.password ||
+        "";
       if (pwd) {
         setRevealedPasswords((prev) => ({ ...prev, [enrollmentNo]: pwd }));
       } else {
@@ -1110,55 +1132,51 @@ export default function BatchesPage() {
 
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => handleView(batch.id)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                            title="View Batch"
-                          >
-                            <FiEye className="h-4.5 w-4.5" />
-                          </button>
-                          {/* <button
-                          onClick={() => openEditModal(batch)}
-                          className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
-                          title="Edit Batch"
-                        >
-                          <FiEdit2 className="h-4.5 w-4.5" />
-                        </button> */}
-                          <button
-                            onClick={() => handleOpenSlotModal(batch.id)}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
-                            title="Configure Time Slot"
-                          >
-                            <FiCalendar className="h-4.5 w-4.5" />
-                          </button>
+                          <Tooltip label="View Batch">
+                            <button
+                              onClick={() => handleView(batch.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+                            >
+                              <FiEye className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Configure Batch Time">
+                            <button
+                              onClick={() => handleOpenSlotModal(batch.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-blue-600"
+                            >
+                              <FiCalendar className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
 
-                          <a
-                            href={`${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${batch.id}/exam/login`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
-                            title="Open Candidate Exam Login"
-                          >
-                            <FiExternalLink className="h-4.5 w-4.5" />
-                          </a>
+                          <Tooltip label="Copy Exam Link">
+                            <button
+                              onClick={() => handleCopyExamLink(batch.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
+                            >
+                              <FiCopy className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
 
                           {!batch.is_published && (
-                            <button
-                              onClick={() => handleOpenPublishModal(batch)}
-                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600"
-                              title="Publish Batch"
-                            >
-                              <FiSend className="h-4.5 w-4.5" />
-                            </button>
+                            <Tooltip label="Publish Batch">
+                              <button
+                                onClick={() => handleOpenPublishModal(batch)}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-emerald-600"
+                              >
+                                <FiSend className="h-4.5 w-4.5" />
+                              </button>
+                            </Tooltip>
                           )}
-                          <button
-                            onClick={() => setBatchToDelete(batch)}
-                            disabled={deleting}
-                            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete Batch"
-                          >
-                            <FiTrash2 className="h-4.5 w-4.5" />
-                          </button>
+                          <Tooltip label="Delete Batch">
+                            <button
+                              onClick={() => setBatchToDelete(batch)}
+                              disabled={deleting}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              <FiTrash2 className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>
@@ -1456,17 +1474,32 @@ export default function BatchesPage() {
                       {
                         key: "is_onboarding_selfie_required_theory" as const,
                         label: "Theory",
+                        marksKey: null,
                       },
                       {
                         key: "is_onboarding_selfie_required_practical" as const,
                         label: "Practical",
+                        marksKey: "total_practical_marks" as const,
                       },
                       {
                         key: "is_onboarding_selfie_required_viva" as const,
                         label: "Viva",
+                        marksKey: "total_viva_marks" as const,
                       },
                     ] as const
-                  ).map(({ key, label }) => (
+                  )
+                    .filter(
+                      ({ marksKey }) =>
+                        marksKey === null ||
+                        Number(selectedJobRole?.[marksKey]) > 0 ||
+                        (modalMode === "edit" &&
+                          form[
+                            marksKey === "total_practical_marks"
+                              ? "is_onboarding_selfie_required_practical"
+                              : "is_onboarding_selfie_required_viva"
+                          ])
+                    )
+                    .map(({ key, label }) => (
                     <label
                       key={key}
                       className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
@@ -1505,17 +1538,32 @@ export default function BatchesPage() {
                       {
                         key: "is_random_evidence_required_theory" as const,
                         label: "Theory",
+                        marksKey: null,
                       },
                       {
                         key: "is_random_evidence_required_practical" as const,
                         label: "Practical",
+                        marksKey: "total_practical_marks" as const,
                       },
                       {
                         key: "is_random_evidence_required_viva" as const,
                         label: "Viva",
+                        marksKey: "total_viva_marks" as const,
                       },
                     ] as const
-                  ).map(({ key, label }) => (
+                  )
+                    .filter(
+                      ({ marksKey }) =>
+                        marksKey === null ||
+                        Number(selectedJobRole?.[marksKey]) > 0 ||
+                        (modalMode === "edit" &&
+                          form[
+                            marksKey === "total_practical_marks"
+                              ? "is_random_evidence_required_practical"
+                              : "is_random_evidence_required_viva"
+                          ])
+                    )
+                    .map(({ key, label }) => (
                     <label
                       key={key}
                       className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
@@ -2420,15 +2468,21 @@ export default function BatchesPage() {
                     <div className="flex items-center gap-2">
                       <div className="flex-1 overflow-hidden rounded-xl border border-sky-200 bg-white px-3 py-2.5">
                         <p className="truncate text-xs font-mono text-slate-600">
-                          {`${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${selectedBatch.id}/exam/login`}
+                          {`${
+                            process.env.NEXT_PUBLIC_CANDIDATE_APP_URL ||
+                            "http://localhost:3002"
+                          }/batches/${selectedBatch.id}/exam/login`}
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
-                          const url = `${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${selectedBatch.id}/exam/login`;
+                          const url = `${
+                            process.env.NEXT_PUBLIC_CANDIDATE_APP_URL ||
+                            "http://localhost:3002"
+                          }/batches/${selectedBatch.id}/exam/login`;
                           navigator.clipboard.writeText(url);
-                          toast.success('Exam link copied to clipboard!');
+                          toast.success("Exam link copied to clipboard!");
                         }}
                         className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
                         title="Copy Link"
@@ -2437,7 +2491,10 @@ export default function BatchesPage() {
                         Copy
                       </button>
                       <a
-                        href={`${process.env.NEXT_PUBLIC_CANDIDATE_APP_URL || 'http://localhost:3002'}/batches/${selectedBatch.id}/exam/login`}
+                        href={`${
+                          process.env.NEXT_PUBLIC_CANDIDATE_APP_URL ||
+                          "http://localhost:3002"
+                        }/batches/${selectedBatch.id}/exam/login`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
@@ -2446,7 +2503,6 @@ export default function BatchesPage() {
                         <FiExternalLink className="h-3.5 w-3.5" />
                         Open
                       </a>
-                     
                     </div>
                   </div>
 
@@ -2754,23 +2810,61 @@ export default function BatchesPage() {
                                       <td className="px-5 py-3 text-xs text-slate-600">
                                         <div className="flex items-center gap-2">
                                           <code className="bg-slate-50 rounded px-2 py-0.5 font-mono text-[11px] border border-slate-100 min-w-[80px] text-center inline-block">
-                                            {revealedPasswords[cand.enrollment_no] 
-                                              ? revealedPasswords[cand.enrollment_no] 
+                                            {revealedPasswords[
+                                              cand.enrollment_no
+                                            ]
+                                              ? revealedPasswords[
+                                                  cand.enrollment_no
+                                                ]
                                               : "••••••••"}
                                           </code>
                                           <button
                                             type="button"
-                                            onClick={() => handleShowPassword(cand.enrollment_no)}
+                                            onClick={() =>
+                                              handleShowPassword(
+                                                cand.enrollment_no
+                                              )
+                                            }
                                             className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded-md hover:bg-slate-100 flex items-center justify-center shrink-0"
-                                            title={revealedPasswords[cand.enrollment_no] ? "Hide Password" : "Show Password"}
-                                            disabled={loadingPasswords[cand.enrollment_no]}
+                                            title={
+                                              revealedPasswords[
+                                                cand.enrollment_no
+                                              ]
+                                                ? "Hide Password"
+                                                : "Show Password"
+                                            }
+                                            disabled={
+                                              loadingPasswords[
+                                                cand.enrollment_no
+                                              ]
+                                            }
                                           >
-                                            {loadingPasswords[cand.enrollment_no] ? (
-                                              <svg className="animate-spin h-3.5 w-3.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            {loadingPasswords[
+                                              cand.enrollment_no
+                                            ] ? (
+                                              <svg
+                                                className="animate-spin h-3.5 w-3.5 text-slate-500"
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <circle
+                                                  className="opacity-25"
+                                                  cx="12"
+                                                  cy="12"
+                                                  r="10"
+                                                  stroke="currentColor"
+                                                  strokeWidth="4"
+                                                ></circle>
+                                                <path
+                                                  className="opacity-75"
+                                                  fill="currentColor"
+                                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                ></path>
                                               </svg>
-                                            ) : revealedPasswords[cand.enrollment_no] ? (
+                                            ) : revealedPasswords[
+                                                cand.enrollment_no
+                                              ] ? (
                                               <FiEyeOff className="h-3.5 w-3.5" />
                                             ) : (
                                               <FiEye className="h-3.5 w-3.5" />

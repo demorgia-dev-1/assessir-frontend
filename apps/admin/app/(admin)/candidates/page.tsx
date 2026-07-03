@@ -19,6 +19,7 @@ import {
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import api from "@/lib/api";
+import Tooltip from "@/components/Tooltip";
 import {
   fetchCandidates,
   createCandidates,
@@ -522,37 +523,39 @@ export default function CandidatesPage() {
                                   ? revealedPasswords[cand.enrollment_no]
                                   : "••••••••"}
                               </code>
-                              <button
-                                type="button"
-                                onClick={() => handleShowPassword(cand.enrollment_no)}
-                                className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded-md hover:bg-slate-100 flex items-center justify-center shrink-0"
-                                title={revealedPasswords[cand.enrollment_no] ? "Hide Password" : "Show Password"}
-                                disabled={loadingPasswords[cand.enrollment_no]}
-                              >
-                                {loadingPasswords[cand.enrollment_no] ? (
-                                  <svg className="animate-spin h-3.5 w-3.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                ) : revealedPasswords[cand.enrollment_no] ? (
-                                  <FiEyeOff className="h-3.5 w-3.5" />
-                                ) : (
-                                  <FiEye className="h-3.5 w-3.5" />
-                                )}
-                              </button>
+                              <Tooltip label={revealedPasswords[cand.enrollment_no] ? "Hide Password" : "Show Password"}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleShowPassword(cand.enrollment_no)}
+                                  className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded-md hover:bg-slate-100 flex items-center justify-center shrink-0"
+                                  disabled={loadingPasswords[cand.enrollment_no]}
+                                >
+                                  {loadingPasswords[cand.enrollment_no] ? (
+                                    <svg className="animate-spin h-3.5 w-3.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  ) : revealedPasswords[cand.enrollment_no] ? (
+                                    <FiEyeOff className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <FiEye className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </Tooltip>
                             </div>
                           </td>
                           <td className="px-5 py-3 text-xs" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => setResetCandidateId(cand.id!)}
-                              disabled={resetting}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
-                              title="Reset Candidate"
-                            >
-                              <FiRefreshCw className="h-3.5 w-3.5" />
-                              Reset
-                            </button>
+                            <Tooltip label="Reset Candidate">
+                              <button
+                                type="button"
+                                onClick={() => setResetCandidateId(cand.id!)}
+                                disabled={resetting}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+                              >
+                                <FiRefreshCw className="h-3.5 w-3.5" />
+                                Reset
+                              </button>
+                            </Tooltip>
                           </td>
                         </tr>
                       );
