@@ -74,8 +74,60 @@ export type Batch = Partial<BatchPayload> & {
   updated_at?: string;
 };
 
-export type CreateBatchesInput = BatchPayload[];
-export type UpdateBatchInput = Partial<BatchPayload> & {
+// ---- Create/Update request shape (POST/PATCH /batches) ----
+// The API groups sections under theory_test / practical_test / viva_test, and
+// each NOS row is flat (no topic_id, no pc_list).
+export type BatchPcRequest = {
+  pc_code: string;
+  nos_code: string;
+  question_type: BatchQuestionType;
+  difficulty_lvl: BatchDifficultyLevel;
+  correct_mark: number;
+  question_count: number;
+  negative_mark: number;
+};
+
+export type BatchNosRequest = {
+  nos_code: string;
+  question_type: BatchQuestionType;
+  difficulty_lvl: BatchDifficultyLevel;
+  correct_mark: number;
+  question_count: number;
+  negative_mark: number;
+  pc_list?: BatchPcRequest[];
+};
+
+export type BatchSectionRequest = {
+  name: string;
+  nos_list: BatchNosRequest[];
+};
+
+export type BatchTestRequest = {
+  sections: BatchSectionRequest[];
+};
+
+export type BatchCreateRequest = {
+  name: string;
+  job_role_id: number;
+  theory_time: number;
+  practical_time: number;
+  viva_time: number;
+  is_authorization_required_in_theory: boolean;
+  is_authorization_required_in_practical: boolean;
+  is_authorization_required_in_viva: boolean;
+  is_onboarding_selfie_required_theory: boolean;
+  is_random_evidence_required_theory: boolean;
+  is_onboarding_selfie_required_practical: boolean;
+  is_random_evidence_required_practical: boolean;
+  is_onboarding_selfie_required_viva: boolean;
+  is_random_evidence_required_viva: boolean;
+  theory_test?: BatchTestRequest;
+  practical_test?: BatchTestRequest;
+  viva_test?: BatchTestRequest;
+};
+
+export type CreateBatchesInput = BatchCreateRequest[];
+export type UpdateBatchInput = Partial<BatchCreateRequest> & {
   id: string | number;
 };
 

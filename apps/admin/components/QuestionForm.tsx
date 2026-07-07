@@ -23,6 +23,7 @@ export type QuestionFormValues = {
   metadata: {
     options: McqOption[];
     scores: RubricScore[];
+    expected_answer: string;
   };
 };
 
@@ -607,6 +608,26 @@ export default function QuestionForm({
                 >
                   Add Score
                 </button>
+              </div>
+
+              <div className="mt-3 flex flex-col gap-1.5">
+                <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                  Expected Answer
+                </label>
+                <textarea
+                  value={value.metadata.expected_answer}
+                  onChange={(event) =>
+                    onChange({
+                      ...value,
+                      metadata: {
+                        ...value.metadata,
+                        expected_answer: event.target.value,
+                      },
+                    })
+                  }
+                  placeholder="Describe the ideal/expected answer used as a reference while scoring."
+                  className="min-h-[64px] w-full rounded-[1rem] border border-slate-200 bg-white px-3 py-2 text-xs leading-6 text-slate-700 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                />
               </div>
 
               <div className="mt-3 flex flex-col gap-2">

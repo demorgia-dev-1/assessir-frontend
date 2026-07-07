@@ -13,7 +13,6 @@ import {
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { loginCandidateAction } from "@/store/slices/auth-slice";
-import { encryptData } from "@/lib/crypto";
 
 export default function CandidateLoginPage() {
   const params = useParams();
@@ -41,8 +40,7 @@ export default function CandidateLoginPage() {
 
       if (loginCandidateAction.fulfilled.match(resultAction)) {
         toast.success("Login successful! Preparing your exam…");
-        const encrypted = encryptData(resultAction.payload.batch);
-        router.push(`/batches/${batchId}/exam?data=${encrypted}`);
+        // router.push(`/batches/${batchId}/exam`);
       } else {
         const errorMsg =
           resultAction.payload ||
@@ -145,10 +143,10 @@ export default function CandidateLoginPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    Results After Review
+                    Instant Results
                   </p>
                   <p className="text-xs text-slate-500">
-                    Your responses are evaluated and results published later
+                    Get your score immediately after submission
                   </p>
                 </div>
               </div>

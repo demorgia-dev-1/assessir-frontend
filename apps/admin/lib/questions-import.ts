@@ -4,7 +4,6 @@ import type {
   CreateQuestionInput,
   DifficultyLevel,
   McqOption,
-  QuestionType,
   RubricScore,
 } from "@/store/slices/questions-slice";
 
@@ -19,9 +18,9 @@ export interface ParseResult {
   errors: ValidationError[];
 }
 
-// A NOS from the selected job role's nos_list. Each NOS becomes one sheet in
-// the template (named by its code). Each row picks its question type from a
-// dropdown; the code maps the sheet back to its nos_id on import.
+// A NOS from the selected job role's nos_list. Each NOS becomes two sheets in
+// the template ("MCQ(<code>)" and "Rubric(<code>)"); the label + code maps a
+// sheet back to its nos_id and question type on import.
 export type NosSheetInfo = {
   id: string | number;
   code: string;
@@ -30,16 +29,27 @@ export type NosSheetInfo = {
 
 type ColumnDef = { header: string; key: string; width: number };
 
-// Every NOS sheet carries a `type` dropdown plus both MCQ and rubric columns.
-const COLUMNS: ColumnDef[] = [
-  { header: "type", key: "type", width: 12 },
+const MCQ_LABEL = "MCQ";
+const RUBRIC_LABEL = "Rubric";
+// Excel caps sheet names at 31 chars.
+const MAX_SHEET_NAME = 31;
+// How many rows below the header get dropdowns wired up.
+const DROPDOWN_ROWS = 500;
+
+const MCQ_COLUMNS: ColumnDef[] = [
   { header: "text", key: "text", width: 40 },
   { header: "difficulty_lvl", key: "difficulty_lvl", width: 16 },
-  { header: "option_a", key: "option_a", width: 16 },
-  { header: "option_b", key: "option_b", width: 16 },
-  { header: "option_c", key: "option_c", width: 16 },
-  { header: "option_d", key: "option_d", width: 16 },
+  { header: "option_a", key: "option_a", width: 18 },
+  { header: "option_b", key: "option_b", width: 18 },
+  { header: "option_c", key: "option_c", width: 18 },
+  { header: "option_d", key: "option_d", width: 18 },
   { header: "correct_option", key: "correct_option", width: 16 },
+];
+
+const RUBRIC_COLUMNS: ColumnDef[] = [
+  { header: "text", key: "text", width: 40 },
+  { header: "difficulty_lvl", key: "difficulty_lvl", width: 16 },
+  { header: "expected_answer", key: "expected_answer", width: 40 },
   { header: "rubric_label_1", key: "rubric_label_1", width: 16 },
   { header: "rubric_percentage_1", key: "rubric_percentage_1", width: 18 },
   { header: "rubric_label_2", key: "rubric_label_2", width: 16 },
@@ -53,7 +63,6 @@ const COLUMNS: ColumnDef[] = [
 ];
 
 const MCQ_EXAMPLE_ROW = {
-  type: "mcq",
   text: "What is the capital of India?",
   difficulty_lvl: "easy",
   option_a: "Delhi",
@@ -64,9 +73,10 @@ const MCQ_EXAMPLE_ROW = {
 };
 
 const RUBRIC_EXAMPLE_ROW = {
-  type: "rubric",
-  text: "Rate candidate communication skills",
+  text: "Evaluate candidate's React component design skills",
   difficulty_lvl: "medium",
+  expected_answer:
+    "Well-structured, reusable components with clear props and separation of concerns.",
   rubric_label_1: "excellent",
   rubric_percentage_1: 100,
   rubric_label_2: "very_good",
@@ -79,33 +89,43 @@ const RUBRIC_EXAMPLE_ROW = {
   rubric_percentage_5: 0,
 };
 
-// How many rows below the header get dropdowns wired up.
-const DROPDOWN_ROWS = 500;
-
 function isEmpty(value: unknown) {
   return value === undefined || value === null || String(value).trim() === "";
 }
 
-// Excel sheet names are limited to 31 chars and cannot contain \ / ? * [ ] :
-function sanitizeSheetName(code: string) {
-  return code.replace(/[\\/?*[\]:]/g, "-").trim().slice(0, 31) || "NOS";
+// Strip characters Excel forbids in sheet names: \ / ? * [ ] :
+function sanitizeCodeBase(code: string) {
+  return code.replace(/[\\/?*[\]:]/g, "-").trim();
 }
 
-function normalizeCode(value: string) {
-  return sanitizeSheetName(value).toLowerCase();
+// Build the sheet name "<label>(<code>)" for a NOS, keeping within Excel's
+// 31-char limit by truncating the code portion.
+function nosSheetName(code: string, label: string) {
+  const wrapperLength = label.length + 2; // "(" + ")"
+  const base = sanitizeCodeBase(code)
+    .slice(0, MAX_SHEET_NAME - wrapperLength)
+    .trim();
+  return `${label}(${base})`;
 }
 
 function columnLetter(index1Based: number) {
-  // Only need single letters here (well under 26 columns).
-  return String.fromCharCode(64 + index1Based);
+  let index = index1Based;
+  let letter = "";
+  while (index > 0) {
+    const remainder = (index - 1) % 26;
+    letter = String.fromCharCode(65 + remainder) + letter;
+    index = Math.floor((index - 1) / 26);
+  }
+  return letter;
 }
 
 function addListValidation(
   worksheet: ExcelJS.Worksheet,
+  columns: ColumnDef[],
   headerKey: string,
   values: string[]
 ) {
-  const colIndex = COLUMNS.findIndex((column) => column.key === headerKey) + 1;
+  const colIndex = columns.findIndex((column) => column.key === headerKey) + 1;
   if (colIndex <= 0) {
     return;
   }
@@ -122,34 +142,71 @@ function addListValidation(
   }
 }
 
+function buildWorksheet(
+  workbook: ExcelJS.Workbook,
+  name: string,
+  columns: ColumnDef[],
+  exampleRow: Record<string, unknown>
+) {
+  const worksheet = workbook.addWorksheet(name);
+  worksheet.columns = columns.map((column) => ({
+    header: column.header,
+    key: column.key,
+    width: column.width,
+  }));
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.views = [{ state: "frozen", ySplit: 1 }];
+  worksheet.addRow(exampleRow);
+  return worksheet;
+}
+
 export async function downloadQuestionsTemplate(nosList: NosSheetInfo[]) {
   const workbook = new ExcelJS.Workbook();
   const usedNames = new Set<string>();
 
-  nosList.forEach((nos, index) => {
-    let name = sanitizeSheetName(nos.code || `NOS ${nos.id ?? index + 1}`);
+  const uniqueName = (baseName: string) => {
+    let name = baseName;
     let suffix = 2;
     while (usedNames.has(name.toLowerCase())) {
-      name = `${sanitizeSheetName(nos.code).slice(0, 27)} (${suffix})`;
+      name = `${baseName.slice(0, MAX_SHEET_NAME - 4)} (${suffix})`;
       suffix += 1;
     }
     usedNames.add(name.toLowerCase());
+    return name;
+  };
 
-    const worksheet = workbook.addWorksheet(name);
-    worksheet.columns = COLUMNS.map((column) => ({
-      header: column.header,
-      key: column.key,
-      width: column.width,
-    }));
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+  nosList.forEach((nos, index) => {
+    const code = nos.code || `NOS ${nos.id ?? index + 1}`;
 
-    worksheet.addRow(MCQ_EXAMPLE_ROW);
-    worksheet.addRow(RUBRIC_EXAMPLE_ROW);
+    const mcqSheet = buildWorksheet(
+      workbook,
+      uniqueName(nosSheetName(code, MCQ_LABEL)),
+      MCQ_COLUMNS,
+      MCQ_EXAMPLE_ROW
+    );
+    addListValidation(mcqSheet, MCQ_COLUMNS, "difficulty_lvl", [
+      "easy",
+      "medium",
+      "hard",
+    ]);
+    addListValidation(mcqSheet, MCQ_COLUMNS, "correct_option", [
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
 
-    addListValidation(worksheet, "type", ["mcq", "rubric"]);
-    addListValidation(worksheet, "difficulty_lvl", ["easy", "medium", "hard"]);
-    addListValidation(worksheet, "correct_option", ["a", "b", "c", "d"]);
+    const rubricSheet = buildWorksheet(
+      workbook,
+      uniqueName(nosSheetName(code, RUBRIC_LABEL)),
+      RUBRIC_COLUMNS,
+      RUBRIC_EXAMPLE_ROW
+    );
+    addListValidation(rubricSheet, RUBRIC_COLUMNS, "difficulty_lvl", [
+      "easy",
+      "medium",
+      "hard",
+    ]);
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -164,14 +221,6 @@ export async function downloadQuestionsTemplate(nosList: NosSheetInfo[]) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
-}
-
-function parseQuestionType(value: unknown): QuestionType | null {
-  const normalized = String(value).trim().toLowerCase();
-  if (normalized === "mcq" || normalized === "rubric") {
-    return normalized;
-  }
-  return null;
 }
 
 function parseDifficulty(value: unknown): DifficultyLevel | null {
@@ -231,7 +280,7 @@ function getSheetRows(
   );
 }
 
-function parseNosSheet(
+function parseMcqSheet(
   rows: Record<string, unknown>[],
   errors: ValidationError[],
   sheetName: string,
@@ -241,21 +290,11 @@ function parseNosSheet(
 
   rows.forEach((row, rowIndex) => {
     const prefix = `Sheet "${sheetName}" row ${rowIndex + 2}`;
-    const type = parseQuestionType(row.type);
     const text = String(row.text ?? "").trim();
     const difficulty = parseDifficulty(row.difficulty_lvl);
 
-    // Skip fully-empty rows silently.
-    if (!type && !text && isEmpty(row.difficulty_lvl)) {
-      return;
-    }
-
-    if (!type) {
-      errors.push({
-        type: "error",
-        message: `${prefix}: type must be mcq or rubric.`,
-      });
-      return;
+    if (!text && isEmpty(row.difficulty_lvl)) {
+      return; // skip empty rows
     }
 
     if (!text) {
@@ -271,35 +310,65 @@ function parseNosSheet(
       return;
     }
 
-    if (type === "mcq") {
-      const options = parseMcqOptions(row);
-      const correctOption = String(row.correct_option ?? "")
-        .trim()
-        .toLowerCase();
-      const correctCount = options.filter((option) => option.is_correct).length;
+    const options = parseMcqOptions(row);
+    const correctOption = String(row.correct_option ?? "").trim().toLowerCase();
+    const correctCount = options.filter((option) => option.is_correct).length;
 
-      if (options.length < 2) {
-        errors.push({
-          type: "error",
-          message: `${prefix}: mcq questions need at least 2 options.`,
-        });
-        return;
-      }
+    if (options.length < 2) {
+      errors.push({
+        type: "error",
+        message: `${prefix}: mcq questions need at least 2 options.`,
+      });
+      return;
+    }
 
-      if (!["a", "b", "c", "d"].includes(correctOption) || correctCount !== 1) {
-        errors.push({
-          type: "error",
-          message: `${prefix}: correct_option must identify a filled option using a, b, c, or d.`,
-        });
-        return;
-      }
+    if (!["a", "b", "c", "d"].includes(correctOption) || correctCount !== 1) {
+      errors.push({
+        type: "error",
+        message: `${prefix}: correct_option must identify a filled option using a, b, c, or d.`,
+      });
+      return;
+    }
 
-      questions.push({
-        text,
-        type: "mcq",
-        difficulty_lvl: difficulty,
-        nos_id: nosId,
-        metadata: { options },
+    questions.push({
+      text,
+      type: "mcq",
+      difficulty_lvl: difficulty,
+      nos_id: nosId,
+      metadata: { options },
+    });
+  });
+
+  return questions;
+}
+
+function parseRubricSheet(
+  rows: Record<string, unknown>[],
+  errors: ValidationError[],
+  sheetName: string,
+  nosId: number
+): CreateQuestionInput[] {
+  const questions: CreateQuestionInput[] = [];
+
+  rows.forEach((row, rowIndex) => {
+    const prefix = `Sheet "${sheetName}" row ${rowIndex + 2}`;
+    const text = String(row.text ?? "").trim();
+    const difficulty = parseDifficulty(row.difficulty_lvl);
+    const expectedAnswer = String(row.expected_answer ?? "").trim();
+
+    if (!text && isEmpty(row.difficulty_lvl)) {
+      return; // skip empty rows
+    }
+
+    if (!text) {
+      errors.push({ type: "error", message: `${prefix}: text is required.` });
+      return;
+    }
+
+    if (!difficulty) {
+      errors.push({
+        type: "error",
+        message: `${prefix}: difficulty_lvl must be easy, medium, or hard.`,
       });
       return;
     }
@@ -334,7 +403,10 @@ function parseNosSheet(
       type: "rubric",
       difficulty_lvl: difficulty,
       nos_id: nosId,
-      metadata: { scores },
+      metadata: {
+        scores,
+        ...(expectedAnswer ? { expected_answer: expectedAnswer } : {}),
+      },
     });
   });
 
@@ -348,37 +420,50 @@ export function parseQuestionsExcelFile(
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
   const errors: ValidationError[] = [];
 
-  // Map each NOS code (normalized) to its id so a sheet name resolves to nos_id.
-  const nosByCode = new Map<string, NosSheetInfo>();
+  // Map each canonical sheet name (normalized) to its NOS id + question type.
+  const sheetMap = new Map<string, { nosId: number; type: "mcq" | "rubric" }>();
   nosList.forEach((nos) => {
-    if (nos.code) {
-      nosByCode.set(normalizeCode(nos.code), nos);
+    if (!nos.code) {
+      return;
     }
+    const nosId = Number(nos.id);
+    sheetMap.set(nosSheetName(nos.code, MCQ_LABEL).toLowerCase(), {
+      nosId,
+      type: "mcq",
+    });
+    sheetMap.set(nosSheetName(nos.code, RUBRIC_LABEL).toLowerCase(), {
+      nosId,
+      type: "rubric",
+    });
   });
 
   const questions: CreateQuestionInput[] = [];
   let matchedSheets = 0;
 
   workbook.SheetNames.forEach((sheetName) => {
-    const nos = nosByCode.get(normalizeCode(sheetName));
-    if (!nos) {
+    const target = sheetMap.get(sheetName.trim().toLowerCase());
+    if (!target) {
       errors.push({
         type: "warning",
-        message: `Sheet "${sheetName}" does not match any NOS code for the selected job role and was skipped.`,
+        message: `Sheet "${sheetName}" is not a "MCQ(<NOS code>)" or "Rubric(<NOS code>)" sheet for the selected job role and was skipped.`,
       });
       return;
     }
 
     matchedSheets += 1;
     const rows = getSheetRows(workbook, sheetName);
-    questions.push(...parseNosSheet(rows, errors, sheetName, Number(nos.id)));
+    if (target.type === "mcq") {
+      questions.push(...parseMcqSheet(rows, errors, sheetName, target.nosId));
+    } else {
+      questions.push(...parseRubricSheet(rows, errors, sheetName, target.nosId));
+    }
   });
 
   if (!matchedSheets) {
     errors.push({
       type: "error",
       message:
-        "No sheet matched a NOS code for the selected job role. Download the template to get correctly named sheets.",
+        "No sheet matched a NOS for the selected job role. Download the template to get correctly named MCQ/Rubric sheets.",
     });
   }
 

@@ -31,7 +31,7 @@ const initialState: AuthState = {
   isInitialized: false,
   isLoading: false,
   session: null,
-  token: null,
+  token: null
 };
 
 function decodeBase64Url(value: string) {
@@ -66,7 +66,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
       batch: null,
       isAuthenticated: false,
       session: null,
-      token: null,
+      token: null
     };
   }
 
@@ -83,7 +83,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
     batch,
     isAuthenticated: true,
     session,
-    token,
+    token
   };
 });
 
@@ -91,58 +91,49 @@ export const loginCandidateAction = createAsyncThunk<
   { batch: any | null; session: CandidateSessionPayload | null; token: string },
   { batchId: string; enrollment_no: string; password: string },
   { rejectValue: string }
->(
-  "auth/loginCandidate",
-  async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
-    try {
-      const response = await api.post(`/batches/${batchId}/exam/login`, {
-        enrollment_no,
-        password,
-      });
+>("auth/loginCandidate", async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
+  try {
+    const response = await api.post(`/batches/${batchId}/exam/login`, {
+      enrollment_no,
+      password
+    });
 
-      const data = response.data;
-      const token = data.token || data; // Handle both object and string response
+    const data = response.data;
+    const token = data.token || data; // Handle both object and string response
 
-      if (typeof token !== "string") {
-        throw new Error("Invalid token received from server");
-      }
-
-      Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
-      const session = parseJwt(token);
-
-      // Persist batch details to sessionStorage
-      const batch = data.batch || null;
-      if (batch && typeof window !== "undefined") {
-        sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
-      }
-
-      return {
-        batch,
-        session,
-        token,
-      };
-    } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error ||
-          error.response?.data?.message ||
-          error.message ||
-          "Unable to sign in right now."
-      );
+    if (typeof token !== "string") {
+      throw new Error("Invalid token received from server");
     }
-  }
-);
 
-export const logoutCandidateAction = createAsyncThunk(
-  "auth/logoutCandidate",
-  async () => {
-    Cookies.remove(AUTH_COOKIE_KEY);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("candidate_user");
-      sessionStorage.removeItem("candidate_user");
-      sessionStorage.removeItem(BATCH_STORAGE_KEY);
+    Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
+    const session = parseJwt(token);
+
+    // Persist batch details to sessionStorage
+    const batch = data.batch || null;
+    if (batch && typeof window !== "undefined") {
+      sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
     }
+
+    return {
+      batch,
+      session,
+      token
+    };
+  } catch (error: any) {
+    return rejectWithValue(
+      error.response?.data?.error || error.response?.data?.message || error.message || "Unable to sign in right now."
+    );
   }
-);
+});
+
+export const logoutCandidateAction = createAsyncThunk("auth/logoutCandidate", async () => {
+  Cookies.remove(AUTH_COOKIE_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("candidate_user");
+    sessionStorage.removeItem("candidate_user");
+    sessionStorage.removeItem(BATCH_STORAGE_KEY);
+  }
+});
 
 const authSlice = createSlice({
   name: "auth",
@@ -154,7 +145,7 @@ const authSlice = createSlice({
     setSession(state, action: PayloadAction<CandidateSessionPayload | null>) {
       state.session = action.payload;
       state.isAuthenticated = Boolean(action.payload && state.token);
-    },
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -201,7 +192,7 @@ const authSlice = createSlice({
         state.session = null;
         state.token = null;
       });
-  },
+  }
 });
 
 export const { clearAuthError, setSession } = authSlice.actions;
