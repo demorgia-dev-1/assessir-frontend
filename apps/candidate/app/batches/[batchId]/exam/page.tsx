@@ -468,10 +468,13 @@ function ExamDashboardInner() {
                   const test = batch[card.key];
                   if (!test) return null;
 
-                  const testType = card.key.replace("_test", "");
-                  const statusKey = `${testType}_exam_status` as keyof BatchData;
-                  const examStatus = batch[statusKey] as string | null | undefined;
-                  const isSubmitted = examStatus === "submitted";
+                  const testType = card.key.replace("_test", "") as
+                    | "theory"
+                    | "practical"
+                    | "viva";
+                  const status = examStatuses?.[testType] ?? null;
+                  const isSubmitted =
+                    status === "submitted" || status === "completed";
 
                   const questionCount =
                     test.sections?.reduce(
@@ -479,16 +482,6 @@ function ExamDashboardInner() {
                         sum + (s.question_ids?.length ?? 0),
                       0
                     ) ?? 0;
-
-                  const statusKey = card.key.replace("_test", "") as
-                    | "theory"
-                    | "practical"
-                    | "viva";
-                  const status = examStatuses?.[statusKey] ?? null;
-                  const isUnauthorized = status === "unauthorized";
-                  const isCompleted =
-                    status === "completed" || status === "submitted";
-                  const isBlocked = isUnauthorized || isCompleted;
 
                   return (
                     <div
