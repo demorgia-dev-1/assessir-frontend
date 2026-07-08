@@ -113,12 +113,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
 });
 
 export const loginCandidateAction = createAsyncThunk<
-  {
-    batch: any | null;
-    examStatuses: ExamStatuses;
-    session: CandidateSessionPayload | null;
-    token: string;
-  },
+  { batch: any | null; examMeta: any | null; session: CandidateSessionPayload | null; token: string },
   { batchId: string; enrollment_no: string; password: string },
   { rejectValue: string }
 >("auth/loginCandidate", async ({ batchId, enrollment_no, password }, { rejectWithValue }) => {
@@ -128,24 +123,36 @@ export const loginCandidateAction = createAsyncThunk<
       password
     });
 
-    const data = response.data;
-    const token = data.token || data; // Handle both object and string response
+      const data = response.data;
+      const token = data.token || data;
 
     if (typeof token !== "string") {
       throw new Error("Invalid token received from server");
     }
 
-    Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 }); // Set cookie for 1 day
-    const session = parseJwt(token);
+      Cookies.set(AUTH_COOKIE_KEY, token, { expires: 1 });
+      const session = parseJwt(token);
 
-    // Persist batch details and exam statuses to sessionStorage
-    const batch = data.batch || null;
-    const examStatuses = extractExamStatuses(data);
-    if (typeof window !== "undefined") {
-      if (batch) {
+      const batch = data.batch || null;
+      if (batch && typeof window !== "undefined") {
         sessionStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify(batch));
       }
-      sessionStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(examStatuses));
+
+      const { token: _t, batch: _b, ...examMeta } = data;
+
+      return {
+        batch,
+        examMeta,
+        session,
+        token,
+      };
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.error ||
+          error.response?.data?.message ||
+          error.message ||
+          "Unable to sign in right now."
+      );
     }
 
     return {

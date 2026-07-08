@@ -44,6 +44,12 @@ interface BatchData {
   theory_test: TestData | null;
   practical_test: TestData | null;
   viva_test: TestData | null;
+  onboardinig_selfie_uploaded_theory?: string | null;
+  onboardinig_selfie_uploaded_practical?: string | null;
+  onboardinig_selfie_uploaded_viva?: string | null;
+  theory_exam_status?: string | null;
+  practical_exam_status?: string | null;
+  viva_exam_status?: string | null;
 }
 
 /* ── Test card config ───────────────────────────────── */
@@ -199,7 +205,7 @@ function ExamDashboardInner() {
       const uploadRes = await api.post(
         `/batches/${batchId}/exam/upload-onboarding-selfie?testType=${testType}`,
         formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
+        { timeout: 60_000 }
       );
 
       if (uploadRes.data?.error) {
@@ -270,9 +276,9 @@ function ExamDashboardInner() {
         testId: testData!.id,
         sections: testData!.sections,
         timeInMinutes: testData!.time_in_minutes,
-        isRandomEvidenceRequired: !!testData!.is_random_evidence_required,
+        isRandomEvidenceRequired: testData!.is_random_evidence_required ?? false,
       });
-      router.push(
+      router.replace(
         `/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`
       );
     } catch (error: any) {
@@ -341,6 +347,15 @@ function ExamDashboardInner() {
         0
       ) ?? 0
     : 0;
+
+  const selfieUploadedKey = selectedTest
+    ? (`onboardinig_selfie_uploaded_${selectedTest.key.replace("_test", "")}` as keyof BatchData)
+    : null;
+  const isSelfieAlreadyUploaded = selfieUploadedKey
+    ? !!batch[selfieUploadedKey]
+    : false;
+  const needsSelfieCapture =
+    !!activeTest?.is_onboarding_selfie_required && !isSelfieAlreadyUploaded;
 
   return (
     <>
@@ -453,6 +468,11 @@ function ExamDashboardInner() {
                   const test = batch[card.key];
                   if (!test) return null;
 
+                  const testType = card.key.replace("_test", "");
+                  const statusKey = `${testType}_exam_status` as keyof BatchData;
+                  const examStatus = batch[statusKey] as string | null | undefined;
+                  const isSubmitted = examStatus === "submitted";
+
                   const questionCount =
                     test.sections?.reduce(
                       (sum: number, s: TestSection) =>
@@ -473,17 +493,34 @@ function ExamDashboardInner() {
                   return (
                     <div
                       key={card.key}
-                      className="group flex flex-col overflow-hidden rounded-2xl border border-blue-100/80 bg-white shadow-sm transition hover:shadow-md hover:border-blue-200"
+                      className={`group flex flex-col overflow-hidden rounded-2xl border shadow-sm transition ${
+                        isSubmitted
+                          ? "border-emerald-200 bg-emerald-50/30"
+                          : "border-blue-100/80 bg-white hover:shadow-md hover:border-blue-200"
+                      }`}
                     >
                       {/* Card header */}
-                      <div className="border-b border-blue-50 bg-blue-50/40 px-6 py-4">
+                      <div className={`border-b px-6 py-4 ${
+                        isSubmitted
+                          ? "border-emerald-100 bg-emerald-50/60"
+                          : "border-blue-50 bg-blue-50/40"
+                      }`}>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
-                            {card.icon}
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${
+                            isSubmitted ? "bg-emerald-600" : "bg-blue-600"
+                          }`}>
+                            {isSubmitted ? <FiCheck className="h-5 w-5" /> : card.icon}
                           </div>
-                          <h3 className="text-sm font-bold text-slate-900">
-                            {card.label}
-                          </h3>
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900">
+                              {card.label}
+                            </h3>
+                            {isSubmitted && (
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+                                Submitted
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -523,27 +560,22 @@ function ExamDashboardInner() {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() =>
-                            handleStartTestClick(card.key, card.label)
-                          }
-                          disabled={isBlocked}
-                          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-                          type="button"
-                        >
-                          {isCompleted
-                            ? "Completed"
-                            : isUnauthorized
-                            ? "Awaiting Authorization"
-                            : "Start Test"}
-                          {!isBlocked && (
+                        {isSubmitted ? (
+                          <div className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-100 px-5 py-3 text-sm font-semibold text-emerald-700">
+                            <FiCheck className="h-4 w-4" />
+                            Exam Submitted
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleStartTestClick(card.key, card.label)
+                            }
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                            type="button"
+                          >
+                            Start Test
                             <FiArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                          )}
-                        </button>
-                        {isUnauthorized && (
-                          <p className="mt-2 text-center text-xs text-amber-600">
-                            Waiting for your proctor to authorize this test.
-                          </p>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -569,7 +601,7 @@ function ExamDashboardInner() {
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
-                      Step 1 of {activeTest?.is_onboarding_selfie_required ? "3" : "2"} · Exam Guidelines
+                      Step 1 of {needsSelfieCapture ? "3" : "2"} · Exam Guidelines
                     </span>
                     <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
                       {selectedTest.label} Instructions
@@ -687,11 +719,23 @@ function ExamDashboardInner() {
                   </label>
                 </div>
 
+                {/* Selfie status notice */}
+                {activeTest?.is_onboarding_selfie_required &&
+                  isSelfieAlreadyUploaded && (
+                    <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                      <FiCheck className="h-5 w-5 shrink-0 text-emerald-500" />
+                      <span>
+                        <strong>Selfie already uploaded.</strong> You can proceed
+                        directly to start the test.
+                      </span>
+                    </div>
+                  )}
+
                 {/* Action button */}
                 <button
                   disabled={!consentChecked}
                   onClick={() => {
-                    if (activeTest?.is_onboarding_selfie_required) {
+                    if (needsSelfieCapture) {
                       setView("selfie");
                     } else {
                       setCountdown(30);
@@ -700,10 +744,10 @@ function ExamDashboardInner() {
                   }}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                 >
-                  {activeTest?.is_onboarding_selfie_required
+                  {needsSelfieCapture
                     ? "Proceed to Selfie Verification"
                     : "Proceed to Start"}
-                  {activeTest?.is_onboarding_selfie_required ? (
+                  {needsSelfieCapture ? (
                     <FiCamera className="h-4 w-4" />
                   ) : (
                     <FiArrowRight className="h-4 w-4" />
@@ -878,7 +922,7 @@ function ExamDashboardInner() {
             <div className="mx-auto max-w-xl text-center">
               <div className="rounded-2xl border border-blue-100/80 bg-white p-8 shadow-sm sm:p-12">
                 <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-500">
-                  Step {activeTest?.is_onboarding_selfie_required ? "3 of 3" : "2 of 2"} · System Check
+                  Step {needsSelfieCapture ? "3 of 3" : "2 of 2"} · System Check
                 </span>
 
                 <h2 className="mt-4 text-xl font-bold text-slate-900">

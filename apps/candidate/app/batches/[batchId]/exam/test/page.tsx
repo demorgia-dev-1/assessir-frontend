@@ -1,7 +1,14 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "react-toastify";
 import {
   FiClock,
@@ -16,8 +23,10 @@ import {
 } from "react-icons/fi";
 import { useAppSelector } from "@/store/hooks";
 import api from "@/lib/api";
+
 import { decryptData } from "@/lib/crypto";
 import { useAiProctoring } from "@/hooks/useAiProctoring";
+
 
 interface QuestionOption {
   id: number;
@@ -52,7 +61,10 @@ function ExamTestInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const batchId = params.batchId as string;
-  const testType = (searchParams.get("type") || "theory") as "theory" | "practical" | "viva";
+  const testType = (searchParams.get("type") || "theory") as
+    | "theory"
+    | "practical"
+    | "viva";
 
   const { isAuthenticated, isInitialized } = useAppSelector(
     (state) => state.auth
@@ -69,7 +81,10 @@ function ExamTestInner() {
   const questionRefs = useMemo<QuestionRef[]>(() => {
     if (!testInfo) return [];
     return testInfo.sections.flatMap((section) =>
-      section.question_ids.map((qId) => ({ questionId: qId, sectionId: section.id }))
+      section.question_ids.map((qId) => ({
+        questionId: qId,
+        sectionId: section.id,
+      }))
     );
   }, [testInfo]);
 
@@ -89,7 +104,9 @@ function ExamTestInner() {
   }, [isInitialized, isAuthenticated, testInfo, batchId, router]);
 
   // Questions cache & loading
-  const [questionsCache, setQuestionsCache] = useState<Record<number, Question>>({});
+  const [questionsCache, setQuestionsCache] = useState<
+    Record<number, Question>
+  >({});
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
 
@@ -100,14 +117,19 @@ function ExamTestInner() {
   const [answers, setAnswers] = useState<Record<number, number | string>>({});
 
   // Question Status: 'unvisited' | 'visited' | 'answered' | 'marked'
-  const [statuses, setStatuses] = useState<Record<number, "unvisited" | "visited" | "answered" | "marked">>({});
+  const [statuses, setStatuses] = useState<
+    Record<number, "unvisited" | "visited" | "answered" | "marked">
+  >({});
 
   // Initialize statuses when questionRefs become available
   useEffect(() => {
     if (questionRefs.length === 0) return;
     setStatuses((prev) => {
       if (Object.keys(prev).length > 0) return prev;
-      const initial: Record<number, "unvisited" | "visited" | "answered" | "marked"> = {};
+      const initial: Record<
+        number,
+        "unvisited" | "visited" | "answered" | "marked"
+      > = {};
       questionRefs.forEach((ref, idx) => {
         initial[ref.questionId] = idx === 0 ? "visited" : "unvisited";
       });
@@ -118,7 +140,10 @@ function ExamTestInner() {
   // Save answers to localStorage to prevent data loss on reload
   useEffect(() => {
     if (testInfo) {
-      localStorage.setItem(`answers_${batchId}_${testInfo.testId}`, JSON.stringify(answers));
+      localStorage.setItem(
+        `answers_${batchId}_${testInfo.testId}`,
+        JSON.stringify(answers)
+      );
     }
   }, [answers, batchId, testInfo]);
 
@@ -181,8 +206,252 @@ function ExamTestInner() {
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
+
+  // ── Random Evidence Capture ──────────────────────────
+  const evidenceVideoRef = useRef<HTMLVideoElement | null>(null);
+  const evidenceStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const evidenceReadyRef = useRef(false);
+  const imageIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const videoIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const uploadEvidence = useCallback(
+    async (blob: Blob, fileName: string, evType: "image" | "video") => {
+      try {
+        const res = await api.post(
+          `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(
+            fileName
+          )}&evType=${evType}`
+        );
+        const presignedUrl = res.data?.url;
+        if (!presignedUrl) return;
+
+        await fetch(presignedUrl, {
+          method: "PUT",
+          body: blob,
+          headers: { "Content-Type": blob.type },
+        });
+      } catch (err) {
+        console.error(`Evidence upload failed (${evType}):`, err);
+      }
+    },
+    [batchId]
+  );
+
+  const captureEvidenceImage = useCallback(() => {
+    const video = evidenceVideoRef.current;
+    if (!video || video.readyState < 2) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const loc = locationRef.current;
+    const ts = new Date().toISOString();
+    const overlayText = loc
+      ? `Lat: ${loc.lat.toFixed(6)} | Lng: ${loc.lng.toFixed(6)} | ${ts}`
+      : `Location: N/A | ${ts}`;
+
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 14px monospace";
+    ctx.fillText(overlayText, 8, canvas.height - 10);
+
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          const fileName = `${Date.now()}.jpg`;
+          uploadEvidence(blob, fileName, "image");
+        }
+      },
+      "image/jpeg",
+      0.8
+    );
+  }, [uploadEvidence]);
+
+  const stopCurrentVideoRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  }, []);
+
+  const startVideoChunk = useCallback(() => {
+    const stream = evidenceStreamRef.current;
+    if (!stream) return;
+
+    videoChunksRef.current = [];
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : MediaRecorder.isTypeSupported("video/webm")
+      ? "video/webm"
+      : "video/mp4";
+
+    try {
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 500_000,
+      });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) videoChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        if (videoChunksRef.current.length > 0) {
+          const ext = mimeType.includes("webm") ? "webm" : "mp4";
+          const blob = new Blob(videoChunksRef.current, { type: mimeType });
+          const fileName = `${Date.now()}.${ext}`;
+          uploadEvidence(blob, fileName, "video");
+          videoChunksRef.current = [];
+        }
+      };
+
+      recorder.start(1000);
+    } catch (err) {
+      console.error("MediaRecorder start failed:", err);
+    }
+  }, [uploadEvidence]);
+
+  // Initialize camera, mic, location for evidence
+  useEffect(() => {
+    if (!testInfo?.isRandomEvidenceRequired) return;
+
+    let watchId: number | undefined;
+    let cancelled = false;
+
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          locationRef.current = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+        },
+        () => {},
+        { enableHighAccuracy: true }
+      );
+    }
+
+    const videoEl = document.createElement("video");
+    videoEl.autoplay = true;
+    videoEl.playsInline = true;
+    videoEl.muted = true;
+    videoEl.volume = 0;
+    videoEl.style.position = "fixed";
+    videoEl.style.top = "-9999px";
+    videoEl.style.width = "1px";
+    videoEl.style.height = "1px";
+    document.body.appendChild(videoEl);
+    evidenceVideoRef.current = videoEl;
+
+    navigator.mediaDevices
+      .getUserMedia({
+        video: {
+          facingMode: "user",
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        },
+        audio: true,
+      })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        evidenceStreamRef.current = stream;
+        videoEl.srcObject = stream;
+        evidenceReadyRef.current = true;
+      })
+      .catch(() => {
+        console.error("Evidence: failed to access camera/mic");
+      });
+
+    return () => {
+      cancelled = true;
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+      evidenceStreamRef.current?.getTracks().forEach((t) => t.stop());
+      evidenceStreamRef.current = null;
+      evidenceReadyRef.current = false;
+      if (evidenceVideoRef.current) {
+        evidenceVideoRef.current.remove();
+        evidenceVideoRef.current = null;
+      }
+    };
+  }, [testInfo?.isRandomEvidenceRequired]);
+
+  // Image capture every 40 seconds
+  useEffect(() => {
+    if (!testInfo?.isRandomEvidenceRequired) return;
+
+    const startInterval = () => {
+      imageIntervalRef.current = setInterval(() => {
+        if (evidenceReadyRef.current) captureEvidenceImage();
+      }, 40_000);
+    };
+
+    const checkReady = setInterval(() => {
+      if (evidenceReadyRef.current) {
+        clearInterval(checkReady);
+        captureEvidenceImage();
+        startInterval();
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(checkReady);
+      if (imageIntervalRef.current) clearInterval(imageIntervalRef.current);
+    };
+  }, [testInfo?.isRandomEvidenceRequired, captureEvidenceImage]);
+
+  // Video recording in 1-minute chunks
+  useEffect(() => {
+    if (!testInfo?.isRandomEvidenceRequired) return;
+
+    const checkReady = setInterval(() => {
+      if (evidenceReadyRef.current) {
+        clearInterval(checkReady);
+        startVideoChunk();
+        videoIntervalRef.current = setInterval(() => {
+          stopCurrentVideoRecording();
+          setTimeout(() => startVideoChunk(), 200);
+        }, 60_000);
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(checkReady);
+      if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+      stopCurrentVideoRecording();
+    };
+  }, [
+    testInfo?.isRandomEvidenceRequired,
+    startVideoChunk,
+    stopCurrentVideoRecording,
+  ]);
+
+  // Stop evidence capture on exam completion
+  const stopEvidenceCapture = useCallback(() => {
+    if (imageIntervalRef.current) clearInterval(imageIntervalRef.current);
+    if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
+    stopCurrentVideoRecording();
+    evidenceStreamRef.current?.getTracks().forEach((t) => t.stop());
+    evidenceStreamRef.current = null;
+    evidenceReadyRef.current = false;
+    if (evidenceVideoRef.current) {
+      evidenceVideoRef.current.remove();
+      evidenceVideoRef.current = null;
+    }
+  }, [stopCurrentVideoRecording]);
 
   // Submission States
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
@@ -452,7 +721,9 @@ function ExamTestInner() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${h > 0 ? h + ":" : ""}${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    return `${h > 0 ? h + ":" : ""}${m.toString().padStart(2, "0")}:${s
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   const handleSelectOption = (qId: number, optIdx: number) => {
@@ -495,7 +766,9 @@ function ExamTestInner() {
       setStatuses((prev) => ({
         ...prev,
         [nextRef.questionId]:
-          prev[nextRef.questionId] === "unvisited" ? "visited" : prev[nextRef.questionId],
+          prev[nextRef.questionId] === "unvisited"
+            ? "visited"
+            : prev[nextRef.questionId],
       }));
       setCurrentIdx((prev) => prev + 1);
     }
@@ -521,6 +794,7 @@ function ExamTestInner() {
 
   const handleSubmit = async (isAutoSubmit = false) => {
     submitPendingTextAnswer();
+    stopEvidenceCapture();
     setIsSubmittingApi(true);
     setIsSubmitModalOpen(false);
 
@@ -544,8 +818,33 @@ function ExamTestInner() {
 
   // Stats calculation for review
   const answeredCount = Object.keys(answers).length;
-  const markedCount = Object.values(statuses).filter((s) => s === "marked").length;
+  const markedCount = Object.values(statuses).filter(
+    (s) => s === "marked"
+  ).length;
   const unansweredCount = questionRefs.length - answeredCount;
+
+  // Determine the next test after current one
+  const nextTestLabel =
+    testType === "theory"
+      ? "Practical"
+      : testType === "practical"
+      ? "Viva"
+      : null;
+
+  const goToDashboard = () => {
+    try {
+      const stored = sessionStorage.getItem("candidate_exam_data");
+      if (stored) {
+        const data = JSON.parse(stored);
+        data[`${testType}_exam_status`] = "submitted";
+        sessionStorage.setItem("candidate_exam_data", JSON.stringify(data));
+        const encrypted = encryptData(data);
+        router.replace(`/batches/${batchId}/exam?data=${encrypted}`);
+        return;
+      }
+    } catch {}
+    router.replace(`/batches/${batchId}/exam/login`);
+  };
 
   // Render Completed View
   if (isExamCompleted) {
@@ -566,23 +865,45 @@ function ExamTestInner() {
           </h2>
 
           <p className="mt-4 text-sm leading-relaxed text-slate-500">
-            Thank you for completing your {testType} assessment. Your exam
-            status has been updated securely. You can now close this tab.
+            Thank you for completing your{" "}
+            <span className="font-semibold text-slate-700 capitalize">
+              {testType}
+            </span>{" "}
+            assessment. Your exam status has been updated securely.
+            {nextTestLabel &&
+              ` You can now proceed to the ${nextTestLabel} test.`}
           </p>
 
-          <button
-            onClick={() => router.replace(`/batches/${batchId}/exam`)}
-            className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-200/50 hover:bg-indigo-700 transition"
-          >
-            Go to Dashboard
-          </button>
+          <div className="mt-8 flex flex-col gap-3">
+            {nextTestLabel && (
+              <button
+                onClick={goToDashboard}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-200/50 hover:bg-indigo-700 transition"
+              >
+                Start {nextTestLabel} Test
+                <FiChevronRight className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={goToDashboard}
+              className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold transition ${
+                nextTestLabel
+                  ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  : "bg-indigo-600 text-white shadow-lg shadow-indigo-200/50 hover:bg-indigo-700"
+              }`}
+            >
+              Go to Dashboard
+            </button>
+          </div>
         </div>
       </main>
     );
   }
 
   const activeRef = questionRefs[currentIdx];
-  const activeQuestion = activeRef ? questionsCache[activeRef.questionId] : null;
+  const activeQuestion = activeRef
+    ? questionsCache[activeRef.questionId]
+    : null;
 
   // Danger limits
   const isTimeLow = timeLeft < 5 * 60;
@@ -600,7 +921,11 @@ function ExamTestInner() {
         <header className="relative z-10 bg-white border-b border-slate-100 px-6 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 shadow ring-1 ring-slate-200">
-              <img src="/logo.png" alt="Logo" className="h-6 w-6 object-contain" />
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="h-6 w-6 object-contain"
+              />
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-900 capitalize">
@@ -660,7 +985,9 @@ function ExamTestInner() {
                   : "bg-slate-50 border-slate-200 text-slate-700"
               }`}
             >
-              <FiClock className={`h-4 w-4 ${isTimeCritical ? "animate-spin" : ""}`} />
+              <FiClock
+                className={`h-4 w-4 ${isTimeCritical ? "animate-spin" : ""}`}
+              />
               <span>{formatTime(timeLeft)}</span>
             </div>
 
@@ -700,7 +1027,9 @@ function ExamTestInner() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  <p className="text-sm text-slate-500 font-medium">Loading question...</p>
+                  <p className="text-sm text-slate-500 font-medium">
+                    Loading question...
+                  </p>
                 </div>
               ) : (
                 <>
@@ -725,39 +1054,42 @@ function ExamTestInner() {
                   {activeQuestion.type === "mcq" &&
                     activeQuestion.metadata?.options &&
                     activeQuestion.metadata.options.length > 0 && (
-                    <div className="space-y-3">
-                      {activeQuestion.metadata.options.map((opt, optIdx) => {
-                        const isSelected = answers[activeQuestion.id] === optIdx;
-                        return (
-                          <button
-                            key={opt.id}
-                            onClick={() => handleSelectOption(activeQuestion.id, optIdx)}
-                            className={`w-full flex items-center justify-between border rounded-2xl p-4 text-left transition duration-200 group text-sm ${
-                              isSelected
-                                ? "bg-indigo-50/50 border-indigo-500 text-indigo-900 font-semibold"
-                                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50/70 hover:border-slate-300"
-                            }`}
-                          >
-                            <div className="flex items-center gap-4">
-                              <div
-                                className={`flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold transition duration-200 ${
-                                  isSelected
-                                    ? "bg-indigo-600 border-indigo-600 text-white"
-                                    : "border-slate-300 bg-slate-50 text-slate-500 group-hover:border-slate-400"
-                                }`}
-                              >
-                                {String.fromCharCode(65 + optIdx)}
+                      <div className="space-y-3">
+                        {activeQuestion.metadata.options.map((opt, optIdx) => {
+                          const isSelected =
+                            answers[activeQuestion.id] === optIdx;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() =>
+                                handleSelectOption(activeQuestion.id, optIdx)
+                              }
+                              className={`w-full flex items-center justify-between border rounded-2xl p-4 text-left transition duration-200 group text-sm ${
+                                isSelected
+                                  ? "bg-indigo-50/50 border-indigo-500 text-indigo-900 font-semibold"
+                                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50/70 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div
+                                  className={`flex h-6 w-6 items-center justify-center rounded-lg border text-xs font-bold transition duration-200 ${
+                                    isSelected
+                                      ? "bg-indigo-600 border-indigo-600 text-white"
+                                      : "border-slate-300 bg-slate-50 text-slate-500 group-hover:border-slate-400"
+                                  }`}
+                                >
+                                  {String.fromCharCode(65 + optIdx)}
+                                </div>
+                                <span>{opt.text}</span>
                               </div>
-                              <span>{opt.text}</span>
-                            </div>
-                            {isSelected && (
-                              <FiCheck className="h-4 w-4 text-indigo-600 shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                              {isSelected && (
+                                <FiCheck className="h-4 w-4 text-indigo-600 shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                   {/* Text Area Input (non-MCQ) */}
                   {activeQuestion.type !== "mcq" && (
@@ -956,7 +1288,9 @@ function ExamTestInner() {
               {/* Stats table */}
               <div className="my-6 grid grid-cols-3 gap-2 border border-slate-100 rounded-2xl p-4 bg-slate-50 text-center">
                 <div>
-                  <p className="text-xs text-slate-400 font-semibold">Answered</p>
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Answered
+                  </p>
                   <p className="mt-1 text-lg font-bold text-emerald-600">
                     {answeredCount}
                   </p>
@@ -968,7 +1302,9 @@ function ExamTestInner() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-semibold">Remaining</p>
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Remaining
+                  </p>
                   <p className="mt-1 text-lg font-bold text-slate-600">
                     {unansweredCount}
                   </p>
