@@ -589,7 +589,7 @@ export default function BatchesPage() {
           difficulty_lvl: difficulty,
           type,
           page: 1,
-          limit: 1,
+          limit: 1000,
         },
       });
       setNosQuestionCounts((current) => ({

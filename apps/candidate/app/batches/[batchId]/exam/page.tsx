@@ -80,16 +80,22 @@ function ExamDashboardInner() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const { isAuthenticated, isInitialized, session } = useAppSelector(
-    (state) => state.auth
-  );
+  const {
+    isAuthenticated,
+    isInitialized,
+    session,
+    batch: authBatch,
+    examStatuses,
+  } = useAppSelector((state) => state.auth);
 
-  // Decrypt batch data from URL param
+  // Batch data is persisted at login (redux + sessionStorage). Fall back to an
+  // encrypted URL param for backwards compatibility.
   const batch = useMemo<BatchData | null>(() => {
+    if (authBatch) return authBatch as BatchData;
     const encrypted = searchParams.get("data");
     if (!encrypted) return null;
     return decryptData<BatchData>(encrypted);
-  }, [searchParams]);
+  }, [authBatch, searchParams]);
 
   // View state management
   const [view, setView] = useState<
@@ -140,6 +146,12 @@ function ExamDashboardInner() {
     setCameraError(null);
     setCapturedPhoto(null);
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError(
+          "Camera access is unavailable. Please open the exam over HTTPS (or localhost) in a supported browser."
+        );
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
@@ -258,6 +270,7 @@ function ExamDashboardInner() {
         testId: testData!.id,
         sections: testData!.sections,
         timeInMinutes: testData!.time_in_minutes,
+        isRandomEvidenceRequired: !!testData!.is_random_evidence_required,
       });
       router.push(
         `/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`
@@ -447,6 +460,16 @@ function ExamDashboardInner() {
                       0
                     ) ?? 0;
 
+                  const statusKey = card.key.replace("_test", "") as
+                    | "theory"
+                    | "practical"
+                    | "viva";
+                  const status = examStatuses?.[statusKey] ?? null;
+                  const isUnauthorized = status === "unauthorized";
+                  const isCompleted =
+                    status === "completed" || status === "submitted";
+                  const isBlocked = isUnauthorized || isCompleted;
+
                   return (
                     <div
                       key={card.key}
@@ -504,12 +527,24 @@ function ExamDashboardInner() {
                           onClick={() =>
                             handleStartTestClick(card.key, card.label)
                           }
-                          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                          disabled={isBlocked}
+                          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                           type="button"
                         >
-                          Start Test
-                          <FiArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                          {isCompleted
+                            ? "Completed"
+                            : isUnauthorized
+                            ? "Awaiting Authorization"
+                            : "Start Test"}
+                          {!isBlocked && (
+                            <FiArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                          )}
                         </button>
+                        {isUnauthorized && (
+                          <p className="mt-2 text-center text-xs text-amber-600">
+                            Waiting for your proctor to authorize this test.
+                          </p>
+                        )}
                       </div>
                     </div>
                   );

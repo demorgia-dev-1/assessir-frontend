@@ -2,8 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import {
   FiEye,
   FiEyeOff,
@@ -40,7 +39,7 @@ export default function CandidateLoginPage() {
 
       if (loginCandidateAction.fulfilled.match(resultAction)) {
         toast.success("Login successful! Preparing your exam…");
-        // router.push(`/batches/${batchId}/exam`);
+        router.push(`/batches/${batchId}/exam`);
       } else {
         const errorMsg =
           resultAction.payload ||
@@ -54,8 +53,6 @@ export default function CandidateLoginPage() {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={3000} />
-
       <main className="relative flex min-h-screen flex-col overflow-hidden">
         {/* ── Animated background ─────────────────────────── */}
         <div className="pointer-events-none absolute inset-0 -z-10">
