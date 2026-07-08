@@ -2,8 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { toast } from "react-toastify";
 import {
   FiEye,
   FiEyeOff,
@@ -13,7 +12,6 @@ import {
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { loginCandidateAction } from "@/store/slices/auth-slice";
-import { encryptData } from "@/lib/crypto";
 
 export default function CandidateLoginPage() {
   const params = useParams();
@@ -61,8 +59,6 @@ export default function CandidateLoginPage() {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={3000} />
-
       <main className="relative flex min-h-screen flex-col overflow-hidden">
         {/* ── Animated background ─────────────────────────── */}
         <div className="pointer-events-none absolute inset-0 -z-10">
@@ -150,10 +146,10 @@ export default function CandidateLoginPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    Results After Review
+                    Instant Results
                   </p>
                   <p className="text-xs text-slate-500">
-                    Your responses are evaluated and results published later
+                    Get your score immediately after submission
                   </p>
                 </div>
               </div>

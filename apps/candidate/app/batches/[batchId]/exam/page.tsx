@@ -86,16 +86,22 @@ function ExamDashboardInner() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const { isAuthenticated, isInitialized, session } = useAppSelector(
-    (state) => state.auth
-  );
+  const {
+    isAuthenticated,
+    isInitialized,
+    session,
+    batch: authBatch,
+    examStatuses,
+  } = useAppSelector((state) => state.auth);
 
-  // Decrypt batch data from URL param
+  // Batch data is persisted at login (redux + sessionStorage). Fall back to an
+  // encrypted URL param for backwards compatibility.
   const batch = useMemo<BatchData | null>(() => {
+    if (authBatch) return authBatch as BatchData;
     const encrypted = searchParams.get("data");
     if (!encrypted) return null;
     return decryptData<BatchData>(encrypted);
-  }, [searchParams]);
+  }, [authBatch, searchParams]);
 
   // View state management
   const [view, setView] = useState<
@@ -146,6 +152,12 @@ function ExamDashboardInner() {
     setCameraError(null);
     setCapturedPhoto(null);
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError(
+          "Camera access is unavailable. Please open the exam over HTTPS (or localhost) in a supported browser."
+        );
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
@@ -467,6 +479,16 @@ function ExamDashboardInner() {
                         sum + (s.question_ids?.length ?? 0),
                       0
                     ) ?? 0;
+
+                  const statusKey = card.key.replace("_test", "") as
+                    | "theory"
+                    | "practical"
+                    | "viva";
+                  const status = examStatuses?.[statusKey] ?? null;
+                  const isUnauthorized = status === "unauthorized";
+                  const isCompleted =
+                    status === "completed" || status === "submitted";
+                  const isBlocked = isUnauthorized || isCompleted;
 
                   return (
                     <div

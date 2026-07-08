@@ -83,12 +83,14 @@ export interface AiProctoringResult {
   status: ProctoringStatus;
   violationCount: number;
   lastViolation: string | null;
+  stream: MediaStream | null;
 }
 
 export function useAiProctoring(enabled: boolean): AiProctoringResult {
   const [status, setStatus] = useState<ProctoringStatus>("disabled");
   const [violationCount, setViolationCount] = useState(0);
   const [lastViolation, setLastViolation] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -174,21 +176,17 @@ export function useAiProctoring(enabled: boolean): AiProctoringResult {
     };
 
     const init = async () => {
+      // 1. Acquire camera + mic FIRST (requires a secure context: https or
+      // localhost). This must succeed for the live preview and evidence
+      // capture, independently of whether the AI model can be loaded.
+      let mediaStream: MediaStream;
       try {
-        // 1. Load model libraries from CDN (wait for real globals, not just tags)
-        await loadScript(TFJS_URL, () => !!window.tf);
-        await loadScript(COCO_URL, () => !!window.cocoSsd);
-        if (cancelled) return;
-
-        // Ensure a TF backend is ready before loading the model
-        try {
-          await window.tf.ready();
-        } catch {
-          // tf.ready is best-effort
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error(
+            "Camera access is unavailable. Open the exam over HTTPS (or localhost)."
+          );
         }
-
-        // 2. Acquire camera + mic
-        const stream = await navigator.mediaDevices.getUserMedia({
+        mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
             width: { ideal: 640 },
@@ -196,55 +194,72 @@ export function useAiProctoring(enabled: boolean): AiProctoringResult {
           },
           audio: true,
         });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
+      } catch (err) {
+        console.error("Proctoring camera access failed:", err);
+        if (!cancelled) setStatus("error");
+        return;
+      }
 
-        // 3. Hidden video element to feed the model
-        const video = document.createElement("video");
-        video.autoplay = true;
-        video.playsInline = true;
-        video.muted = true;
-        video.volume = 0;
-        video.style.position = "fixed";
-        video.style.top = "-9999px";
-        video.style.width = "1px";
-        video.style.height = "1px";
-        document.body.appendChild(video);
-        video.srcObject = stream;
-        videoRef.current = video;
-        await video.play().catch(() => {});
+      if (cancelled) {
+        mediaStream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = mediaStream;
+      setStream(mediaStream);
 
-        // 4. Audio analyser for noise detection
+      // 2. Hidden video element to feed the model
+      const video = document.createElement("video");
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      video.volume = 0;
+      video.style.position = "fixed";
+      video.style.top = "-9999px";
+      video.style.width = "1px";
+      video.style.height = "1px";
+      document.body.appendChild(video);
+      video.srcObject = mediaStream;
+      videoRef.current = video;
+      await video.play().catch(() => {});
+
+      // 3. Audio analyser for noise detection
+      try {
+        const AudioCtx =
+          window.AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        const source = audioCtx.createMediaStreamSource(mediaStream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        (audioCtx as any).__analyser = analyser;
+        audioCtxRef.current = audioCtx;
+      } catch {
+        // audio analysis optional
+      }
+
+      // 4. Load the detection model from CDN (best-effort). If this fails the
+      // camera stays live for the preview and evidence capture.
+      try {
+        await loadScript(TFJS_URL, () => !!window.tf);
+        await loadScript(COCO_URL, () => !!window.cocoSsd);
+        if (cancelled) return;
+
         try {
-          const AudioCtx =
-            window.AudioContext || (window as any).webkitAudioContext;
-          const audioCtx = new AudioCtx();
-          const source = audioCtx.createMediaStreamSource(stream);
-          const analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 512;
-          source.connect(analyser);
-          (audioCtx as any).__analyser = analyser;
-          audioCtxRef.current = audioCtx;
+          await window.tf.ready();
         } catch {
-          // audio analysis optional
+          // tf.ready is best-effort
         }
 
-        // 5. Load the COCO-SSD model
         modelRef.current = await window.cocoSsd.load({
           base: "lite_mobilenet_v2",
         });
         if (cancelled) return;
 
         setStatus("active");
-
-        // 6. Start loops
         detectTimerRef.current = setInterval(runDetection, DETECT_INTERVAL_MS);
         noiseTimerRef.current = setInterval(sampleNoise, NOISE_INTERVAL_MS);
       } catch (err) {
-        console.error("AI Proctoring init failed:", err);
+        console.error("AI Proctoring model load failed:", err);
         if (!cancelled) setStatus("error");
       }
     };
@@ -257,6 +272,7 @@ export function useAiProctoring(enabled: boolean): AiProctoringResult {
       if (noiseTimerRef.current) clearInterval(noiseTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      setStream(null);
       audioCtxRef.current?.close().catch(() => {});
       audioCtxRef.current = null;
       if (videoRef.current) {
@@ -268,5 +284,5 @@ export function useAiProctoring(enabled: boolean): AiProctoringResult {
     };
   }, [enabled, warn]);
 
-  return { status, violationCount, lastViolation };
+  return { status, violationCount, lastViolation, stream };
 }

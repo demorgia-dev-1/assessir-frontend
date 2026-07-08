@@ -27,10 +27,11 @@ import {
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
   Batch,
+  BatchCreateRequest,
   BatchDifficultyLevel,
-  BatchPayload,
   BatchQuestionType,
   BatchSectionType,
+  BatchTestRequest,
   clearBatchError,
   clearSelectedBatch,
   createBatches,
@@ -196,6 +197,19 @@ function getNosCode(nos: JobRoleNos) {
   return nos.code || nos.nos_code || "";
 }
 
+function getPcCode(pc: { code?: string; pc_code?: string }) {
+  return pc.code || pc.pc_code || "";
+}
+
+// Cache key for the "questions available in a NOS" lookup.
+function nosCountKey(
+  nosId: string | number,
+  difficulty: string,
+  type: string
+) {
+  return `${nosId}__${difficulty}__${type}`;
+}
+
 function getQuestionTotal(data: any): number {
   if (Array.isArray(data)) {
     return data.length;
@@ -269,48 +283,55 @@ function normalizeBatchToForm(batch: Batch): BatchFormState {
   };
 }
 
-function buildPayload(form: BatchFormState): BatchPayload | null {
+function buildPayload(form: BatchFormState): BatchCreateRequest | null {
   if (!form.name.trim() || !form.job_role_id) {
     toast.error("Batch name, sector and job role are required.");
     return null;
   }
 
-  const sections = form.sections
-    .filter((section) => section.name.trim())
-    .map((section) => ({
-      name: section.name.trim(),
-      type: section.type,
-      nos_list: section.nos_list
-        .filter((nos) => nos.nos_code.trim())
-        .map((nos) => ({
-          topic_id: numberOrZero(nos.topic_id),
-          nos_code: nos.nos_code.trim(),
-          question_count: numberOrZero(nos.question_count),
-          difficulty_lvl: nos.difficulty_lvl,
-          question_type: nos.question_type,
-          correct_mark: numberOrZero(nos.correct_mark),
-          negative_mark: numberOrZero(nos.negative_mark),
-          pc_list: nos.pc_list
-            .filter((pc) => pc.pc_code.trim())
-            .map((pc) => ({
-              topic_id: numberOrZero(pc.topic_id || nos.topic_id),
-              nos_code: pc.nos_code.trim() || nos.nos_code.trim(),
-              pc_code: pc.pc_code.trim(),
-              question_count: numberOrZero(pc.question_count),
-              difficulty_lvl: pc.difficulty_lvl,
-              question_type: pc.question_type,
-              correct_mark: numberOrZero(pc.correct_mark),
-              negative_mark: numberOrZero(pc.negative_mark),
-            })),
-        })),
-    }));
+  const buildTest = (type: BatchSectionType): BatchTestRequest | undefined => {
+    const sections = form.sections
+      .filter((section) => section.type === type && section.name.trim())
+      .map((section) => ({
+        name: section.name.trim(),
+        nos_list: section.nos_list
+          .filter((nos) => nos.nos_code.trim())
+          .map((nos) => {
+            const pc_list = nos.pc_list
+              .filter((pc) => pc.pc_code.trim())
+              .map((pc) => ({
+                pc_code: pc.pc_code.trim(),
+                nos_code: pc.nos_code.trim() || nos.nos_code.trim(),
+                question_type: pc.question_type,
+                difficulty_lvl: pc.difficulty_lvl,
+                correct_mark: numberOrZero(pc.correct_mark),
+                question_count: numberOrZero(pc.question_count),
+                negative_mark: numberOrZero(pc.negative_mark),
+              }));
 
-  if (
-    !sections.length ||
-    sections.some((section) => !section.nos_list.length)
-  ) {
+            return {
+              nos_code: nos.nos_code.trim(),
+              question_type: nos.question_type,
+              difficulty_lvl: nos.difficulty_lvl,
+              correct_mark: numberOrZero(nos.correct_mark),
+              question_count: numberOrZero(nos.question_count),
+              negative_mark: numberOrZero(nos.negative_mark),
+              ...(pc_list.length ? { pc_list } : {}),
+            };
+          }),
+      }))
+      .filter((section) => section.nos_list.length);
+
+    return sections.length ? { sections } : undefined;
+  };
+
+  const theory_test = buildTest("theory");
+  const practical_test = buildTest("practical");
+  const viva_test = buildTest("viva");
+
+  if (!theory_test && !practical_test && !viva_test) {
     toast.error(
-      "Add at least one NOS row inside every section you want to save."
+      "Add at least one NOS row inside a section before saving the batch."
     );
     return null;
   }
@@ -335,7 +356,9 @@ function buildPayload(form: BatchFormState): BatchPayload | null {
       form.is_random_evidence_required_practical,
     is_onboarding_selfie_required_viva: form.is_onboarding_selfie_required_viva,
     is_random_evidence_required_viva: form.is_random_evidence_required_viva,
-    sections,
+    ...(theory_test ? { theory_test } : {}),
+    ...(practical_test ? { practical_test } : {}),
+    ...(viva_test ? { viva_test } : {}),
   };
 }
 
@@ -379,9 +402,9 @@ export default function BatchesPage() {
   const [bulkJobRoleId, setBulkJobRoleId] = useState("");
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkMessages, setBulkMessages] = useState<string[]>([]);
-  const [questionCounts, setQuestionCounts] = useState<Record<string, number>>(
-    {}
-  );
+  const [nosQuestionCounts, setNosQuestionCounts] = useState<
+    Record<string, number>
+  >({});
   const [detailsTab, setDetailsTab] = useState<"structure" | "candidates">(
     "structure"
   );
@@ -462,6 +485,39 @@ export default function BatchesPage() {
     [selectedJobRole]
   );
 
+  // Build a NOS list (with PCs) for a section, auto-loaded from the selected
+  // job role's nos_list. Shared by the auto-populate effect and Add Section.
+  const buildSectionNosList = (sectionType: BatchSectionType): NosForm[] => {
+    const nosList = selectedJobRole?.nos_list || [];
+    if (!nosList.length) return [createNos()];
+    const questionType: BatchQuestionType =
+      sectionType === "practical" ? "rubric" : "mcq";
+    const difficulty: BatchDifficultyLevel =
+      sectionType === "practical" ? "medium" : "easy";
+    return nosList.map((nos) => {
+      const nosCode = getNosCode(nos);
+      return createNos({
+        nos_code: nosCode,
+        question_count: "1",
+        difficulty_lvl: difficulty,
+        question_type: questionType,
+        correct_mark: "0",
+        negative_mark: "0",
+        pc_list: (nos.pc_list || []).map((pc) =>
+          createPc({
+            pc_code: getPcCode(pc),
+            nos_code: nosCode,
+            question_count: "1",
+            difficulty_lvl: difficulty,
+            question_type: questionType,
+            correct_mark: "0",
+            negative_mark: "0",
+          })
+        ),
+      });
+    });
+  };
+
   // Auto-populate sections and NOS when job role is selected in create mode
   useEffect(() => {
     if (modalMode !== "create" || !selectedJobRole || jobRoleDetailLoading) {
@@ -479,42 +535,26 @@ export default function BatchesPage() {
       nosList.some((nos) => Number(nos.total_viva_marks) > 0) ||
       Number(selectedJobRole.total_viva_marks) > 0;
 
-    const buildNosListForSection = (
-      sectionType: BatchSectionType
-    ): NosForm[] => {
-      if (!nosList.length) return [createNos()];
-      return nosList.map((nos) =>
-        createNos({
-          nos_code: getNosCode(nos),
-          question_count: "1",
-          difficulty_lvl: sectionType === "practical" ? "medium" : "easy",
-          question_type: sectionType === "practical" ? "rubric" : "mcq",
-          correct_mark: "0",
-          negative_mark: "0",
-        })
-      );
-    };
-
     const sections: SectionForm[] = [];
     if (hasTheory) {
       sections.push({
         name: "Theory Section",
         type: "theory",
-        nos_list: buildNosListForSection("theory"),
+        nos_list: buildSectionNosList("theory"),
       });
     }
     if (hasPractical) {
       sections.push({
         name: "Practical Section",
         type: "practical",
-        nos_list: buildNosListForSection("practical"),
+        nos_list: buildSectionNosList("practical"),
       });
     }
     if (hasViva) {
       sections.push({
         name: "Viva Section",
         type: "viva",
-        nos_list: buildNosListForSection("viva"),
+        nos_list: buildSectionNosList("viva"),
       });
     }
     // Fallback: at least one section
@@ -522,7 +562,7 @@ export default function BatchesPage() {
       sections.push({
         name: "Section 1",
         type: "theory",
-        nos_list: buildNosListForSection("theory"),
+        nos_list: buildSectionNosList("theory"),
       });
     }
 
@@ -532,47 +572,65 @@ export default function BatchesPage() {
     }));
   }, [selectedJobRole, modalMode, jobRoleDetailLoading]);
 
-  const loadQuestionCount = async (topicId: string) => {
-    if (!topicId || questionCounts[topicId] !== undefined) {
+  const loadNosQuestionCount = async (
+    nosId: string | number,
+    difficulty: string,
+    type: string
+  ) => {
+    const key = nosCountKey(nosId, difficulty, type);
+    if (!nosId || nosQuestionCounts[key] !== undefined) {
       return;
     }
 
     try {
       const response = await api.get("/questions", {
-        params: { topicId: topicId, page: 1, limit: 1 },
+        params: {
+          nos_id: nosId,
+          difficulty_lvl: difficulty,
+          type,
+          page: 1,
+          limit: 1000,
+        },
       });
-      setQuestionCounts((current) => ({
+      setNosQuestionCounts((current) => ({
         ...current,
-        [topicId]: getQuestionTotal(response.data),
+        [key]: getQuestionTotal(response.data),
       }));
     } catch {
-      setQuestionCounts((current) => ({ ...current, [topicId]: 0 }));
+      setNosQuestionCounts((current) => ({ ...current, [key]: 0 }));
     }
   };
 
+  // Resolve a form NOS row back to its job-role NOS id (via nos_code).
+  const getNosIdForCode = (nosCode: string) => {
+    if (!nosCode) return undefined;
+    const matched = selectedNosList.find(
+      (jobRoleNos) => getNosCode(jobRoleNos) === nosCode
+    );
+    return matched?.id;
+  };
+
+  // Fetch the available-question count for every NOS row (per nos_id +
+  // difficulty + type) so the Questions field can show live availability.
   useEffect(() => {
     if (!modalMode) {
       return;
     }
 
-    const topicIds = new Set<string>();
     form.sections.forEach((section) => {
       section.nos_list.forEach((nos) => {
-        if (nos.topic_id) {
-          topicIds.add(nos.topic_id);
+        const nosId = getNosIdForCode(nos.nos_code);
+        if (nosId) {
+          void loadNosQuestionCount(
+            nosId,
+            nos.difficulty_lvl,
+            nos.question_type
+          );
         }
-        nos.pc_list.forEach((pc) => {
-          if (pc.topic_id) {
-            topicIds.add(pc.topic_id);
-          }
-        });
       });
     });
-
-    topicIds.forEach((topicId) => {
-      void loadQuestionCount(topicId);
-    });
-  }, [form.sections, modalMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.sections, modalMode, selectedNosList]);
 
   const refreshBatches = () => {
     dispatch(fetchBatches({ page: currentPage, limit: 10 }));
@@ -714,72 +772,6 @@ export default function BatchesPage() {
       ...current,
       sections: current.sections.filter((_, index) => index !== sectionIndex),
     }));
-  };
-
-  const removeNos = (sectionIndex: number, nosIndex: number) => {
-    const section = form.sections[sectionIndex];
-    if (section.nos_list.length <= 1) {
-      toast.error("Each section needs at least one NOS row.");
-      return;
-    }
-
-    updateSection(sectionIndex, {
-      ...section,
-      nos_list: section.nos_list.filter((_, index) => index !== nosIndex),
-    });
-  };
-
-  const handleNosTopicChange = (
-    sectionIndex: number,
-    nosIndex: number,
-    topicId: string
-  ) => {
-    const nos = form.sections[sectionIndex].nos_list[nosIndex];
-    updateNos(sectionIndex, nosIndex, {
-      ...nos,
-      topic_id: topicId,
-      pc_list: nos.pc_list.map((pc) => ({ ...pc, topic_id: topicId })),
-    });
-    void loadQuestionCount(topicId);
-  };
-
-  const handleNosCodeChange = (
-    sectionIndex: number,
-    nosIndex: number,
-    nosCode: string
-  ) => {
-    const nos = form.sections[sectionIndex].nos_list[nosIndex];
-    updateNos(sectionIndex, nosIndex, {
-      ...nos,
-      nos_code: nosCode,
-      pc_list: nos.pc_list.map((pc) => ({ ...pc, nos_code: nosCode })),
-    });
-  };
-
-  const handlePcCodeChange = (
-    sectionIndex: number,
-    nosIndex: number,
-    pcIndex: number,
-    pcCode: string
-  ) => {
-    const nos = form.sections[sectionIndex].nos_list[nosIndex];
-    const pc = nos.pc_list[pcIndex];
-    updatePc(sectionIndex, nosIndex, pcIndex, {
-      ...pc,
-      pc_code: pcCode,
-    });
-  };
-
-  const removePc = (
-    sectionIndex: number,
-    nosIndex: number,
-    pcIndex: number
-  ) => {
-    const nos = form.sections[sectionIndex].nos_list[nosIndex];
-    updateNos(sectionIndex, nosIndex, {
-      ...nos,
-      pc_list: nos.pc_list.filter((_, index) => index !== pcIndex),
-    });
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -1682,18 +1674,32 @@ export default function BatchesPage() {
               )}
 
               <div className="mt-6 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Sections
-                </p>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Test Structure
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    NOS and PCs are loaded automatically from the selected job
+                    role. Just set the question count, difficulty, type, and
+                    marks.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() =>
                     setForm((current) => ({
                       ...current,
-                      sections: [...current.sections, createSection("theory")],
+                      sections: [
+                        ...current.sections,
+                        {
+                          name: `Section ${current.sections.length + 1}`,
+                          type: "theory",
+                          nos_list: buildSectionNosList("theory"),
+                        },
+                      ],
                     }))
                   }
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700"
+                  className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
                   Add Section
                 </button>
@@ -1721,77 +1727,31 @@ export default function BatchesPage() {
                         key={`${section.type}-${sectionIndex}`}
                         className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5"
                       >
-                        <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-                          <Field label="Section Name">
-                            <input
-                              value={section.name}
-                              onChange={(event) =>
-                                updateSection(sectionIndex, {
-                                  ...section,
-                                  name: event.target.value,
-                                })
-                              }
-                              className={INPUT_CLASS}
-                            />
-                          </Field>
-                          <Field label="Type">
-                            <select
-                              value={section.type}
-                              onChange={(event) =>
-                                updateSection(sectionIndex, {
-                                  ...section,
-                                  type: event.target.value as BatchSectionType,
-                                })
-                              }
-                              className={INPUT_CLASS}
-                            >
-                              {SECTION_TYPES.filter((type) => {
-                                if (type === "practical")
-                                  return (
-                                    Number(
-                                      selectedJobRole?.total_practical_marks
-                                    ) > 0
-                                  );
-                                if (type === "viva")
-                                  return (
-                                    Number(selectedJobRole?.total_viva_marks) >
-                                    0
-                                  );
-                                return true;
-                              }).map((type) => (
-                                <option key={type} value={type}>
-                                  {type}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <div className="flex items-end">
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateSection(sectionIndex, {
-                                    ...section,
-                                    nos_list: [
-                                      ...section.nos_list,
-                                      createNos(),
-                                    ],
-                                  })
-                                }
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700"
-                              >
-                                Add NOS
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeSection(sectionIndex)}
-                                disabled={form.sections.length <= 1}
-                                className="rounded-xl border border-red-100 bg-white px-4 py-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                Remove Section
-                              </button>
-                            </div>
-                          </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <input
+                            value={section.name}
+                            onChange={(event) =>
+                              updateSection(sectionIndex, {
+                                ...section,
+                                name: event.target.value,
+                              })
+                            }
+                            className="min-w-[200px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400"
+                          />
+                          <span className="rounded-full bg-slate-200/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600">
+                            {section.type}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {section.nos_list.length} NOS
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSection(sectionIndex)}
+                            disabled={form.sections.length <= 1}
+                            className="ml-auto shrink-0 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Remove Section
+                          </button>
                         </div>
 
                         <div className="mt-4 space-y-4">
@@ -1845,115 +1805,9 @@ export default function BatchesPage() {
                                       );
                                     })()}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeNos(sectionIndex, nosIndex)
-                                  }
-                                  disabled={section.nos_list.length <= 1}
-                                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  <FiTrash2 className="h-3.5 w-3.5" />
-                                  Remove NOS
-                                </button>
                               </div>
 
-                              <div className="grid gap-3 lg:grid-cols-7">
-                                <Field label="Topic">
-                                  <select
-                                    value={nos.topic_id}
-                                    onChange={(event) =>
-                                      handleNosTopicChange(
-                                        sectionIndex,
-                                        nosIndex,
-                                        event.target.value
-                                      )
-                                    }
-                                    className={INPUT_CLASS}
-                                  >
-                                    <option value="">Topic</option>
-                                    {topics.map((topic) => (
-                                      <option key={topic.id} value={topic.id}>
-                                        {topic.name}
-                                        {questionCounts[String(topic.id)] !==
-                                        undefined
-                                          ? ` (${
-                                              questionCounts[String(topic.id)]
-                                            } questions)`
-                                          : ""}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  {nos.topic_id && (
-                                    <span className="ml-1 text-xs font-semibold text-slate-500">
-                                      Available:{" "}
-                                      {questionCounts[nos.topic_id] ??
-                                        "Loading..."}
-                                    </span>
-                                  )}
-                                </Field>
-                                <Field label="NOS Code">
-                                  <select
-                                    value={nos.nos_code}
-                                    onChange={(event) =>
-                                      handleNosCodeChange(
-                                        sectionIndex,
-                                        nosIndex,
-                                        event.target.value
-                                      )
-                                    }
-                                    className={INPUT_CLASS}
-                                    disabled={!selectedNosList.length}
-                                  >
-                                    <option value="">Select NOS</option>
-                                    {selectedNosList.map((jobRoleNos) => {
-                                      const nosCode = getNosCode(jobRoleNos);
-                                      return (
-                                        <option
-                                          key={jobRoleNos.id || nosCode}
-                                          value={nosCode}
-                                        >
-                                          {nosCode}{" "}
-                                          {jobRoleNos.name
-                                            ? `- ${jobRoleNos.name}`
-                                            : ""}
-                                        </option>
-                                      );
-                                    })}
-                                  </select>
-                                </Field>
-                                <Field label="Questions">
-                                  <input
-                                    type="number"
-                                    value={nos.question_count}
-                                    onChange={(event) =>
-                                      updateNos(sectionIndex, nosIndex, {
-                                        ...nos,
-                                        question_count: event.target.value,
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                  />
-                                  {nos.topic_id && (
-                                    <span className="ml-1 text-xs text-slate-400">
-                                      {questionCounts[nos.topic_id] ===
-                                      undefined
-                                        ? "Loading..."
-                                        : `of ${
-                                            questionCounts[nos.topic_id]
-                                          } available`}
-                                    </span>
-                                  )}
-                                  {nos.topic_id &&
-                                    questionCounts[nos.topic_id] !==
-                                      undefined &&
-                                    Number(nos.question_count) >
-                                      questionCounts[nos.topic_id] && (
-                                      <span className="ml-1 text-xs font-semibold text-red-500">
-                                        Exceeds available questions
-                                      </span>
-                                    )}
-                                </Field>
+                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                                 <Field label="Difficulty">
                                   <select
                                     value={nos.difficulty_lvl}
@@ -1992,6 +1846,50 @@ export default function BatchesPage() {
                                     ))}
                                   </select>
                                 </Field>
+                                <Field label="Questions">
+                                  <input
+                                    type="number"
+                                    value={nos.question_count}
+                                    onChange={(event) =>
+                                      updateNos(sectionIndex, nosIndex, {
+                                        ...nos,
+                                        question_count: event.target.value,
+                                      })
+                                    }
+                                    className={INPUT_CLASS}
+                                  />
+                                  {(() => {
+                                    const nosId = getNosIdForCode(nos.nos_code);
+                                    if (!nosId) return null;
+                                    const count =
+                                      nosQuestionCounts[
+                                        nosCountKey(
+                                          nosId,
+                                          nos.difficulty_lvl,
+                                          nos.question_type
+                                        )
+                                      ];
+                                    const exceeds =
+                                      count !== undefined &&
+                                      Number(nos.question_count) > count;
+                                    return (
+                                      <span
+                                        className={`mt-1 block text-[11px] font-medium ${
+                                          exceeds
+                                            ? "text-red-500"
+                                            : "text-slate-400"
+                                        }`}
+                                      >
+                                        {count === undefined
+                                          ? "Checking availability…"
+                                          : `${count} question${
+                                              count === 1 ? "" : "s"
+                                            } available`}
+                                        {exceeds ? " — exceeds available" : ""}
+                                      </span>
+                                    );
+                                  })()}
+                                </Field>
                                 <Field label="Correct Mark">
                                   <input
                                     type="number"
@@ -2020,132 +1918,21 @@ export default function BatchesPage() {
                                 </Field>
                               </div>
 
-                              <div className="mt-3 flex items-center justify-between">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                  PC List
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateNos(sectionIndex, nosIndex, {
-                                      ...nos,
-                                      pc_list: [
-                                        ...nos.pc_list,
-                                        createPc({
-                                          topic_id: nos.topic_id,
-                                          nos_code: nos.nos_code,
-                                          difficulty_lvl: nos.difficulty_lvl,
-                                          question_type: nos.question_type,
-                                        }),
-                                      ],
-                                    })
-                                  }
-                                  className="text-xs font-semibold text-slate-700"
-                                >
-                                  Add PC
-                                </button>
-                              </div>
-
-                              <div className="mt-3 space-y-2">
-                                {nos.pc_list.length ? (
-                                  nos.pc_list.map((pc, pcIndex) => {
-                                    const selectedNos = selectedNosList.find(
-                                      (jobRoleNos) =>
-                                        getNosCode(jobRoleNos) === nos.nos_code
-                                    );
-                                    const pcOptions =
-                                      selectedNos?.pc_list || [];
-
-                                    return (
+                              {nos.pc_list.length > 0 && (
+                                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                    Performance Criteria ({nos.pc_list.length})
+                                  </p>
+                                  <div className="space-y-2">
+                                    {nos.pc_list.map((pc, pcIndex) => (
                                       <div
                                         key={`${sectionIndex}-${nosIndex}-${pcIndex}`}
-                                        className="rounded-xl bg-slate-50 p-3"
+                                        className="rounded-lg border border-slate-100 bg-white p-2.5"
                                       >
-                                        <div className="mb-2 flex items-center justify-between gap-3">
-                                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                                            PC {pcIndex + 1}
-                                          </p>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              removePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex
-                                              )
-                                            }
-                                            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                                          >
-                                            <FiTrash2 className="h-3.5 w-3.5" />
-                                            Remove PC
-                                          </button>
-                                        </div>
-                                        <div className="grid gap-2 lg:grid-cols-7">
-                                          {pcOptions.length ? (
-                                            <select
-                                              value={pc.pc_code}
-                                              onChange={(event) =>
-                                                handlePcCodeChange(
-                                                  sectionIndex,
-                                                  nosIndex,
-                                                  pcIndex,
-                                                  event.target.value
-                                                )
-                                              }
-                                              className={INPUT_CLASS}
-                                            >
-                                              <option value="">
-                                                Select PC
-                                              </option>
-                                              {pcOptions.map((option) => {
-                                                const pcCode =
-                                                  option.code ||
-                                                  option.pc_code ||
-                                                  "";
-                                                return (
-                                                  <option
-                                                    key={option.id || pcCode}
-                                                    value={pcCode}
-                                                  >
-                                                    {pcCode}{" "}
-                                                    {option.name
-                                                      ? `- ${option.name}`
-                                                      : ""}
-                                                  </option>
-                                                );
-                                              })}
-                                            </select>
-                                          ) : (
-                                            <input
-                                              value={pc.pc_code}
-                                              onChange={(event) =>
-                                                handlePcCodeChange(
-                                                  sectionIndex,
-                                                  nosIndex,
-                                                  pcIndex,
-                                                  event.target.value
-                                                )
-                                              }
-                                              className={INPUT_CLASS}
-                                              placeholder="PC code"
-                                            />
-                                          )}
-                                          <input
-                                            value={pc.nos_code}
-                                            onChange={(event) =>
-                                              updatePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex,
-                                                {
-                                                  ...pc,
-                                                  nos_code: event.target.value,
-                                                }
-                                              )
-                                            }
-                                            className={INPUT_CLASS}
-                                            placeholder="NOS code"
-                                          />
+                                        <p className="mb-2 text-[11px] font-semibold text-slate-600">
+                                          {pc.pc_code || `PC ${pcIndex + 1}`}
+                                        </p>
+                                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                                           <input
                                             type="number"
                                             value={pc.question_count}
@@ -2246,15 +2033,10 @@ export default function BatchesPage() {
                                           />
                                         </div>
                                       </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-4 text-sm text-slate-500">
-                                    No PC rows added. Use Add PC when this NOS
-                                    needs PC-level marks.
+                                    ))}
                                   </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>

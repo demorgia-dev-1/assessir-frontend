@@ -18,6 +18,7 @@ export type QuestionMetadata =
   | {
       options?: McqOption[];
       scores?: RubricScore[];
+      expected_answer?: string;
     }
   | string
   | null;
@@ -51,6 +52,7 @@ export type CreateQuestionInput = {
   metadata: {
     options?: McqOption[];
     scores?: RubricScore[];
+    expected_answer?: string;
   };
 };
 
@@ -63,6 +65,7 @@ export type UpdateQuestionInput = {
   metadata: {
     options?: McqOption[];
     scores?: RubricScore[];
+    expected_answer?: string;
   };
 };
 

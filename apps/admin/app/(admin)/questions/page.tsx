@@ -62,6 +62,7 @@ function createEmptyForm(): QuestionFormValues {
     metadata: {
       options: DEFAULT_OPTIONS.map((option) => ({ ...option })),
       scores: DEFAULT_SCORES.map((score) => ({ ...score })),
+      expected_answer: "",
     },
   };
 }
@@ -88,7 +89,7 @@ function stripHtml(html: string) {
 function normalizeQuestionForm(question: Question): QuestionFormValues {
   const metadata =
     typeof question.metadata === "string"
-      ? { options: DEFAULT_OPTIONS, scores: DEFAULT_SCORES }
+      ? { options: DEFAULT_OPTIONS, scores: DEFAULT_SCORES, expected_answer: "" }
       : question.metadata || {};
 
   const jobRoleId = question.nos?.job_role_id ?? question.nos?.JobRoleID ?? "";
@@ -106,6 +107,7 @@ function normalizeQuestionForm(question: Question): QuestionFormValues {
       scores: metadata.scores?.length
         ? metadata.scores.map((score) => ({ ...score }))
         : DEFAULT_SCORES.map((score) => ({ ...score })),
+      expected_answer: metadata.expected_answer ?? "",
     },
   };
 }
@@ -127,6 +129,7 @@ function buildCreatePayload(values: QuestionFormValues) {
               })),
           }
         : {
+            expected_answer: values.metadata.expected_answer.trim(),
             scores: values.metadata.scores
               .filter((score) => score.label.trim())
               .map((score) => ({
@@ -769,10 +772,10 @@ export default function QuestionsPage() {
                   Bulk Import Questions
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Pick a job role, then download its template. It has one sheet
-                  per NOS (named by code); on each row pick the `type` from the
-                  dropdown (`mcq` or `rubric`), fill that type&apos;s columns,
-                  and upload to import.
+                  Pick a job role, then download its template. Each NOS gets two
+                  sheets &mdash; `MCQ(&lt;code&gt;)` and `Rubric(&lt;code&gt;)`
+                  (rubric includes an `expected_answer`). Fill the rows and
+                  upload to import.
                 </p>
               </div>
 
@@ -812,9 +815,11 @@ export default function QuestionsPage() {
                     {bulkNosLoading
                       ? "Loading NOS..."
                       : bulkNosList.length
-                      ? `${bulkNosList.length} NOS sheet${
-                          bulkNosList.length > 1 ? "s" : ""
-                        }: ${bulkNosList.map((nos) => nos.code).join(", ")}`
+                      ? `${bulkNosList.length} NOS (${
+                          bulkNosList.length * 2
+                        } sheets): ${bulkNosList
+                          .map((nos) => nos.code)
+                          .join(", ")}`
                       : "No NOS found for this job role."}
                   </p>
                 )}
@@ -1068,6 +1073,18 @@ export default function QuestionsPage() {
                             )
                           )}
                         </div>
+                      </div>
+                    )}
+
+                  {selectedQuestion.type === "rubric" &&
+                    selectedQuestionMetadata?.expected_answer && (
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Expected Answer
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                          {selectedQuestionMetadata.expected_answer}
+                        </p>
                       </div>
                     )}
 
