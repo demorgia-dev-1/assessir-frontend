@@ -61,23 +61,23 @@ const navigationItems = [
       </svg>
     ),
   },
-  {
-    href: "/topics",
-    label: "Topics",
-    icon: (
-      <svg
-        aria-hidden="true"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        viewBox="0 0 24 24"
-      >
-        <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v9A2.5 2.5 0 0 1 16.5 19h-9A2.5 2.5 0 0 1 5 16.5z" />
-        <path d="M8 9h8M8 12h8M8 15h5" />
-      </svg>
-    ),
-  },
+  // {
+  //   href: "/topics",
+  //   label: "Topics",
+  //   icon: (
+  //     <svg
+  //       aria-hidden="true"
+  //       className="h-5 w-5"
+  //       fill="none"
+  //       stroke="currentColor"
+  //       strokeWidth="1.8"
+  //       viewBox="0 0 24 24"
+  //     >
+  //       <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v9A2.5 2.5 0 0 1 16.5 19h-9A2.5 2.5 0 0 1 5 16.5z" />
+  //       <path d="M8 9h8M8 12h8M8 15h5" />
+  //     </svg>
+  //   ),
+  // },
   {
     href: "/questions",
     label: "Questions",
@@ -263,7 +263,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           onClick={() => setSidebarOpen(true)}
           className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition hover:bg-slate-50"
         >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+          >
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -302,7 +308,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                   onClick={() => setSidebarOpen(false)}
                   className="rounded-xl bg-white/10 p-2 text-white transition hover:bg-white/20"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
                     <path d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>

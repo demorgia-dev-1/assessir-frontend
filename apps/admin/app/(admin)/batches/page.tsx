@@ -201,6 +201,21 @@ function getPcCode(pc: { code?: string; pc_code?: string }) {
   return pc.code || pc.pc_code || "";
 }
 
+// A NOS belongs to a section only if it carries marks for that test type
+// (theory section → NOS with theory marks, and so on).
+function nosMatchesSectionType(
+  nos: JobRoleNos,
+  sectionType: BatchSectionType
+) {
+  if (sectionType === "practical") {
+    return Number(nos.total_practical_marks) > 0;
+  }
+  if (sectionType === "viva") {
+    return Number(nos.total_viva_marks) > 0;
+  }
+  return Number(nos.total_theory_marks) > 0;
+}
+
 // Cache key for the "questions available in a NOS" lookup.
 function nosCountKey(
   nosId: string | number,
@@ -393,6 +408,8 @@ export default function BatchesPage() {
   const { topics } = useAppSelector((state) => state.topics);
   console.log(batches);
   const [form, setForm] = useState<BatchFormState>(createEmptyForm());
+  const [newSectionType, setNewSectionType] =
+    useState<BatchSectionType>("theory");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [batchToEdit, setBatchToEdit] = useState<Batch | null>(null);
   const [batchToDelete, setBatchToDelete] = useState<Batch | null>(null);
@@ -488,10 +505,12 @@ export default function BatchesPage() {
   // Build a NOS list (with PCs) for a section, auto-loaded from the selected
   // job role's nos_list. Shared by the auto-populate effect and Add Section.
   const buildSectionNosList = (sectionType: BatchSectionType): NosForm[] => {
-    const nosList = selectedJobRole?.nos_list || [];
+    const nosList = (selectedJobRole?.nos_list || []).filter((nos) =>
+      nosMatchesSectionType(nos, sectionType)
+    );
     if (!nosList.length) return [createNos()];
     const questionType: BatchQuestionType =
-      sectionType === "practical" ? "rubric" : "mcq";
+      sectionType === "practical" || sectionType === "viva" ? "rubric" : "mcq";
     const difficulty: BatchDifficultyLevel =
       sectionType === "practical" ? "medium" : "easy";
     return nosList.map((nos) => {
@@ -772,6 +791,31 @@ export default function BatchesPage() {
       ...current,
       sections: current.sections.filter((_, index) => index !== sectionIndex),
     }));
+  };
+
+  const addNos = (sectionIndex: number) => {
+    const section = form.sections[sectionIndex];
+    updateSection(sectionIndex, {
+      ...section,
+      nos_list: [...section.nos_list, createNos()],
+    });
+  };
+
+  const removeNos = (sectionIndex: number, nosIndex: number) => {
+    const section = form.sections[sectionIndex];
+    updateSection(sectionIndex, {
+      ...section,
+      nos_list: section.nos_list.filter((_, index) => index !== nosIndex),
+    });
+  };
+
+  const handleNosCodeChange = (
+    sectionIndex: number,
+    nosIndex: number,
+    nosCode: string
+  ) => {
+    const nos = form.sections[sectionIndex].nos_list[nosIndex];
+    updateNos(sectionIndex, nosIndex, { ...nos, nos_code: nosCode });
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -1684,25 +1728,56 @@ export default function BatchesPage() {
                     marks.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setForm((current) => ({
-                      ...current,
-                      sections: [
-                        ...current.sections,
-                        {
-                          name: `Section ${current.sections.length + 1}`,
-                          type: "theory",
-                          nos_list: buildSectionNosList("theory"),
-                        },
-                      ],
-                    }))
-                  }
-                  className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Add Section
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <select
+                    value={newSectionType}
+                    onChange={(event) =>
+                      setNewSectionType(event.target.value as BatchSectionType)
+                    }
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 outline-none transition focus:border-slate-400"
+                  >
+                    {SECTION_TYPES.filter((type) => {
+                      if (type === "practical")
+                        return (
+                          Number(selectedJobRole?.total_practical_marks) > 0 ||
+                          modalMode === "edit"
+                        );
+                      if (type === "viva")
+                        return (
+                          Number(selectedJobRole?.total_viva_marks) > 0 ||
+                          modalMode === "edit"
+                        );
+                      return true;
+                    }).map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        sections: [
+                          {
+                            name: `${newSectionType
+                              .charAt(0)
+                              .toUpperCase()}${newSectionType.slice(
+                              1
+                            )} Section`,
+                            type: newSectionType,
+                            nos_list: buildSectionNosList(newSectionType),
+                          },
+                          ...current.sections,
+                        ],
+                      }))
+                    }
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Add Section
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 space-y-5">
@@ -1738,9 +1813,35 @@ export default function BatchesPage() {
                             }
                             className="min-w-[200px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400"
                           />
-                          <span className="rounded-full bg-slate-200/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600">
-                            {section.type}
-                          </span>
+                          <select
+                            value={section.type}
+                            onChange={(event) =>
+                              updateSection(sectionIndex, {
+                                ...section,
+                                type: event.target.value as BatchSectionType,
+                              })
+                            }
+                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 outline-none transition focus:border-slate-400"
+                          >
+                            {SECTION_TYPES.filter((type) => {
+                              if (type === "practical")
+                                return (
+                                  Number(
+                                    selectedJobRole?.total_practical_marks
+                                  ) > 0 || modalMode === "edit"
+                                );
+                              if (type === "viva")
+                                return (
+                                  Number(selectedJobRole?.total_viva_marks) >
+                                    0 || modalMode === "edit"
+                                );
+                              return true;
+                            }).map((type) => (
+                              <option key={type} value={type}>
+                                {type}
+                              </option>
+                            ))}
+                          </select>
                           <span className="text-[11px] font-medium text-slate-400">
                             {section.nos_list.length} NOS
                           </span>
@@ -1748,9 +1849,10 @@ export default function BatchesPage() {
                             type="button"
                             onClick={() => removeSection(sectionIndex)}
                             disabled={form.sections.length <= 1}
-                            className="ml-auto shrink-0 rounded-xl border border-red-100 bg-white px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Remove section"
+                            className="ml-auto shrink-0 rounded-xl border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
-                            Remove Section
+                            <FiTrash2 className="h-4 w-4" />
                           </button>
                         </div>
 
@@ -1761,15 +1863,38 @@ export default function BatchesPage() {
                               className="rounded-2xl border border-white bg-white p-4 shadow-sm"
                             >
                               <div className="mb-3 flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                    NOS {nosIndex + 1}
-                                    {nos.nos_code && (
-                                      <span className="ml-2 normal-case tracking-normal text-slate-500">
-                                        ({nos.nos_code})
-                                      </span>
-                                    )}
-                                  </p>
+                                <div className="flex flex-1 items-center gap-3">
+                                  <select
+                                    value={nos.nos_code}
+                                    onChange={(event) =>
+                                      handleNosCodeChange(
+                                        sectionIndex,
+                                        nosIndex,
+                                        event.target.value
+                                      )
+                                    }
+                                    className="max-w-[240px] shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-slate-400"
+                                  >
+                                    <option value="">Select NOS</option>
+                                    {selectedNosList
+                                      .filter((jobRoleNos) =>
+                                        nosMatchesSectionType(
+                                          jobRoleNos,
+                                          section.type
+                                        )
+                                      )
+                                      .map((jobRoleNos) => {
+                                        const code = getNosCode(jobRoleNos);
+                                        return (
+                                          <option key={code} value={code}>
+                                            {code}
+                                            {jobRoleNos.name
+                                              ? ` — ${jobRoleNos.name}`
+                                              : ""}
+                                          </option>
+                                        );
+                                      })}
+                                  </select>
                                   {nos.nos_code &&
                                     (() => {
                                       const matchedNos = selectedNosList.find(
@@ -1778,33 +1903,41 @@ export default function BatchesPage() {
                                           nos.nos_code
                                       );
                                       if (!matchedNos) return null;
+                                      const mark =
+                                        section.type === "practical"
+                                          ? matchedNos.total_practical_marks
+                                          : section.type === "viva"
+                                          ? matchedNos.total_viva_marks
+                                          : matchedNos.total_theory_marks;
+                                      const label =
+                                        section.type === "practical"
+                                          ? "P"
+                                          : section.type === "viva"
+                                          ? "V"
+                                          : "T";
+                                      const badgeClass =
+                                        section.type === "practical"
+                                          ? "bg-emerald-50 text-emerald-600"
+                                          : section.type === "viva"
+                                          ? "bg-amber-50 text-amber-600"
+                                          : "bg-blue-50 text-blue-600";
                                       return (
-                                        <div className="flex items-center gap-1.5">
-                                          {Number(
-                                            matchedNos.total_theory_marks
-                                          ) > 0 && (
-                                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-600">
-                                              T:{matchedNos.total_theory_marks}
-                                            </span>
-                                          )}
-                                          {Number(
-                                            matchedNos.total_practical_marks
-                                          ) > 0 && (
-                                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">
-                                              P:
-                                              {matchedNos.total_practical_marks}
-                                            </span>
-                                          )}
-                                          {Number(matchedNos.total_viva_marks) >
-                                            0 && (
-                                            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
-                                              V:{matchedNos.total_viva_marks}
-                                            </span>
-                                          )}
-                                        </div>
+                                        <span
+                                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${badgeClass}`}
+                                        >
+                                          {label}:{Number(mark) || 0}
+                                        </span>
                                       );
                                     })()}
                                 </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeNos(sectionIndex, nosIndex)}
+                                  title="Remove NOS"
+                                  className="shrink-0 rounded-lg border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50"
+                                >
+                                  <FiTrash2 className="h-4 w-4" />
+                                </button>
                               </div>
 
                               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -2040,6 +2173,14 @@ export default function BatchesPage() {
                             </div>
                           ))}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => addNos(sectionIndex)}
+                          title="Add NOS"
+                          className="mt-3 inline-flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-2 text-slate-600 transition hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          <FiPlus className="h-4 w-4" />
+                        </button>
                       </div>
                     );
                   })}
