@@ -4,14 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   FiBarChart2,
   FiChevronDown,
-  FiDownload,
   FiSearch,
   FiUsers,
-  FiCheckCircle,
-  FiXCircle,
-  FiClock,
   FiRefreshCw,
   FiFileText,
+  FiLayers,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchBatches } from "@/store/slices/batches-slice";
@@ -21,74 +18,58 @@ import {
   setReportBatchId,
 } from "@/store/slices/reports-slice";
 
-/* ── Helpers ─────────────────────────────────────────── */
+/* ── Types & helpers ─────────────────────────────────── */
 
-// Pull the candidate/result rows out of an unknown report shape.
-function extractRows(report: any): Record<string, any>[] {
-  if (!report) return [];
-  if (Array.isArray(report)) return report;
-  const candidateKeys = [
-    "candidates",
-    "results",
-    "report",
-    "reports",
-    "data",
-    "rows",
-    "candidate_reports",
-  ];
-  for (const key of candidateKeys) {
-    if (Array.isArray(report[key])) return report[key];
-  }
-  return [];
-}
+type NosColumn = { name?: string; code: string; marks?: string | number };
 
-// Summary object (non-array scalar fields) for top-level batch stats.
-function extractSummary(report: any): Record<string, any> {
-  if (!report || Array.isArray(report)) return {};
-  const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(report)) {
-    if (!Array.isArray(v) && typeof v !== "object") out[k] = v;
-  }
-  return out;
-}
+type ReportRow = {
+  name?: string;
+  enrollment_no?: string;
+  theory_exam_status?: string | null;
+  practical_exam_status?: string | null;
+  viva_exam_status?: string | null;
+  theory?: NosColumn[];
+  practical?: NosColumn[];
+  viva?: NosColumn[];
+  [key: string]: any;
+};
 
-function prettyHeader(key: string) {
-  return key
-    .replace(/_/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
+type ReportShape = {
+  header?: {
+    theory?: NosColumn[];
+    practical?: NosColumn[];
+    viva?: NosColumn[];
+  };
+  rows?: ReportRow[];
+};
+
+const TEST_TYPES = ["theory", "practical", "viva"] as const;
+type TestType = (typeof TEST_TYPES)[number];
+
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function formatCell(value: any): string {
   if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }
   return String(value);
 }
 
-// Detect a status-like value for pass/fail/submitted counting.
-function getStatusValue(row: Record<string, any>): string {
-  const keys = Object.keys(row);
-  const statusKey =
-    keys.find((k) => /^(result|status|exam_status|final_status)$/i.test(k)) ||
-    keys.find((k) => /status|result/i.test(k));
-  return statusKey ? String(row[statusKey] ?? "").toLowerCase() : "";
+// A candidate is absent for a test type when its exam status is missing
+// (null) or "unauthorized".
+function isAbsent(status: any): boolean {
+  const s = String(status ?? "").toLowerCase().trim();
+  return s === "" || s === "unauthorized";
 }
 
-const PRIORITY_COLUMNS = [
-  "enrollment_no",
-  "enrollmentno",
-  "name",
-  "candidate_name",
-  "email",
-];
+// A candidate's marks for a given NOS (matched by code) within a test type.
+function getNosMark(row: ReportRow, type: TestType, code: string): string {
+  const arr = Array.isArray(row[type]) ? (row[type] as NosColumn[]) : [];
+  const found = arr.find((n) => n.code === code);
+  return found?.marks !== undefined && found?.marks !== null
+    ? String(found.marks)
+    : "—";
+}
 
 export default function ReportsPage() {
   const dispatch = useAppDispatch();
@@ -115,73 +96,40 @@ export default function ReportsPage() {
       dispatch(clearReport());
       return;
     }
+    const batch = batches.find((b) => String(b.id) === String(batchId));
     dispatch(setReportBatchId(batchId));
-    dispatch(fetchBatchReport(batchId));
+    dispatch(fetchBatchReport({ batchId, jobRoleId: batch?.job_role_id }));
   };
 
-  const rows = useMemo(() => extractRows(report), [report]);
-  const summary = useMemo(() => extractSummary(report), [report]);
+  const reportData = report as ReportShape | null;
+  const header = reportData?.header ?? {};
+  const rows = useMemo<ReportRow[]>(
+    () => (Array.isArray(reportData?.rows) ? reportData!.rows! : []),
+    [reportData]
+  );
 
-  // Build ordered column list from the union of row keys.
-  const columns = useMemo(() => {
-    const keySet = new Set<string>();
-    rows.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
-    const all = Array.from(keySet);
-    const priority = all.filter((k) =>
-      PRIORITY_COLUMNS.includes(k.toLowerCase())
-    );
-    const rest = all
-      .filter((k) => !PRIORITY_COLUMNS.includes(k.toLowerCase()))
-      .sort();
-    return [...priority, ...rest];
-  }, [rows]);
+  // Only render test types that have NOS columns in the header.
+  const activeTypes = useMemo<TestType[]>(
+    () =>
+      TEST_TYPES.filter(
+        (t) => Array.isArray(header[t]) && header[t]!.length > 0
+      ),
+    [header]
+  );
 
-  // Filtered rows by search across all values.
   const filteredRows = useMemo(() => {
     if (!search.trim()) return rows;
     const q = search.toLowerCase();
-    return rows.filter((r) =>
-      Object.values(r).some((v) => formatCell(v).toLowerCase().includes(q))
+    return rows.filter(
+      (r) =>
+        String(r.enrollment_no ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(r.name ?? "")
+          .toLowerCase()
+          .includes(q)
     );
   }, [rows, search]);
-
-  // Summary stat counts derived from status fields.
-  const stats = useMemo(() => {
-    let passed = 0;
-    let failed = 0;
-    let submitted = 0;
-    let pending = 0;
-    rows.forEach((r) => {
-      const s = getStatusValue(r);
-      if (/pass/.test(s)) passed += 1;
-      else if (/fail/.test(s)) failed += 1;
-      if (/submit|complete|done/.test(s)) submitted += 1;
-      else if (/pending|not|absent|n\/a/.test(s) || s === "") pending += 1;
-    });
-    return { total: rows.length, passed, failed, submitted, pending };
-  }, [rows]);
-
-  const hasStatusData = stats.passed + stats.failed > 0;
-
-  const handleExportCsv = () => {
-    if (!rows.length) return;
-    const header = columns.map((c) => `"${prettyHeader(c)}"`).join(",");
-    const body = filteredRows
-      .map((r) =>
-        columns
-          .map((c) => `"${formatCell(r[c]).replace(/"/g, '""')}"`)
-          .join(",")
-      )
-      .join("\n");
-    const csv = `${header}\n${body}`;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${selectedBatch?.name || `batch_${selectedBatchId}`}_report.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6">
@@ -197,19 +145,9 @@ export default function ReportsPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            {selectedBatch && rows.length > 0 && (
-              <button
-                type="button"
-                onClick={handleExportCsv}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <FiDownload className="h-4 w-4" />
-                Export CSV
-              </button>
-            )}
             <div className="border-l border-slate-200 pl-5 text-right">
               <p className="text-3xl font-bold text-slate-950">
-                {selectedBatch ? stats.total : "—"}
+                {selectedBatch ? rows.length : "—"}
               </p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                 {selectedBatch ? "Candidates" : "Select a Batch"}
@@ -250,7 +188,13 @@ export default function ReportsPage() {
             <button
               type="button"
               onClick={() =>
-                selectedBatchId && dispatch(fetchBatchReport(selectedBatchId))
+                selectedBatchId &&
+                dispatch(
+                  fetchBatchReport({
+                    batchId: selectedBatchId,
+                    jobRoleId: selectedBatch?.job_role_id,
+                  })
+                )
               }
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
@@ -274,8 +218,8 @@ export default function ReportsPage() {
             Select a Batch
           </h3>
           <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
-            Choose a batch above to view its assessment report, results and
-            analytics.
+            Choose a batch above to view its assessment report and NOS-wise
+            marks.
           </p>
         </div>
       ) : loading ? (
@@ -291,57 +235,29 @@ export default function ReportsPage() {
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard
               icon={<FiUsers className="h-5 w-5" />}
-              label="Total Candidates"
-              value={stats.total}
+              label="Candidates"
+              value={rows.length}
               tone="slate"
             />
             <StatCard
-              icon={<FiCheckCircle className="h-5 w-5" />}
-              label={hasStatusData ? "Passed" : "Submitted"}
-              value={hasStatusData ? stats.passed : stats.submitted}
+              icon={<FiLayers className="h-5 w-5" />}
+              label="Theory NOS"
+              value={header.theory?.length ?? 0}
+              tone="indigo"
+            />
+            <StatCard
+              icon={<FiLayers className="h-5 w-5" />}
+              label="Practical NOS"
+              value={header.practical?.length ?? 0}
               tone="emerald"
             />
             <StatCard
-              icon={<FiXCircle className="h-5 w-5" />}
-              label={hasStatusData ? "Failed" : "Pending"}
-              value={hasStatusData ? stats.failed : stats.pending}
-              tone="red"
-            />
-            <StatCard
-              icon={<FiClock className="h-5 w-5" />}
-              label="Pass Rate"
-              value={
-                hasStatusData && stats.total > 0
-                  ? `${Math.round((stats.passed / stats.total) * 100)}%`
-                  : "—"
-              }
-              tone="indigo"
+              icon={<FiLayers className="h-5 w-5" />}
+              label="Viva NOS"
+              value={header.viva?.length ?? 0}
+              tone="amber"
             />
           </div>
-
-          {/* Batch-level summary fields */}
-          {Object.keys(summary).length > 0 && (
-            <div className="glass-panel rounded-[2rem] border border-white/80 p-6 shadow-soft shadow-slate-900/5">
-              <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-500">
-                Batch Summary
-              </h3>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {Object.entries(summary).map(([k, v]) => (
-                  <div
-                    key={k}
-                    className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3"
-                  >
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      {prettyHeader(k)}
-                    </p>
-                    <p className="mt-1 truncate text-sm font-semibold text-slate-900">
-                      {formatCell(v)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Results table */}
           <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
@@ -362,7 +278,7 @@ export default function ReportsPage() {
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search results…"
+                    placeholder="Search enrollment or name…"
                     className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
                   />
                 </div>
@@ -383,45 +299,110 @@ export default function ReportsPage() {
               <div className="min-h-0 flex-1 overflow-auto">
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 border-b border-slate-150 bg-slate-50/95 backdrop-blur">
+                    {/* Group header row */}
                     <tr>
-                      <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      <th
+                        rowSpan={2}
+                        className="whitespace-nowrap border-b border-slate-150 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                      >
                         #
                       </th>
-                      {columns.map((col) => (
+                      <th
+                        rowSpan={2}
+                        className="whitespace-nowrap border-b border-slate-150 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                      >
+                        Enrollment No
+                      </th>
+                      <th
+                        rowSpan={2}
+                        className="whitespace-nowrap border-b border-slate-150 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                      >
+                        Name
+                      </th>
+                      {activeTypes.map((type) => (
                         <th
-                          key={col}
-                          className="whitespace-nowrap px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                          key={type}
+                          colSpan={1 + (header[type]?.length ?? 0)}
+                          className="whitespace-nowrap border-l border-slate-150 px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-slate-600"
                         >
-                          {prettyHeader(col)}
+                          {titleCase(type)}
                         </th>
+                      ))}
+                    </tr>
+                    {/* Column header row */}
+                    <tr>
+                      {activeTypes.map((type) => (
+                        <FragmentCols key={type}>
+                          <th className="whitespace-nowrap border-l border-slate-150 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Status
+                          </th>
+                          {(header[type] || []).map((nos) => (
+                            <th
+                              key={`${type}-${nos.code}`}
+                              className="whitespace-nowrap px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                              title={nos.name}
+                            >
+                              {nos.code}
+                              {nos.marks ? (
+                                <span className="block text-[9px] font-semibold normal-case tracking-normal text-slate-400">
+                                  / {nos.marks}
+                                </span>
+                              ) : null}
+                            </th>
+                          ))}
+                        </FragmentCols>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {filteredRows.map((row, idx) => (
                       <tr
-                        key={idx}
+                        key={row.enrollment_no || idx}
                         className="transition-colors hover:bg-slate-50/60"
                       >
                         <td className="px-5 py-3 text-xs font-medium text-slate-400">
                           {idx + 1}
                         </td>
-                        {columns.map((col) => {
-                          const raw = row[col];
-                          const status = /status|result/i.test(col)
-                            ? String(raw ?? "").toLowerCase()
-                            : "";
+                        <td className="whitespace-nowrap px-5 py-3 text-xs font-semibold text-slate-900">
+                          {formatCell(row.enrollment_no)}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-3 text-xs text-slate-700">
+                          {formatCell(row.name)}
+                        </td>
+                        {activeTypes.map((type) => {
+                          const status = row[`${type}_exam_status`];
+                          const nosCount = header[type]?.length ?? 0;
+
+                          // Absent → one "Absent" cell spanning the whole
+                          // status + NOS-marks group for this test type.
+                          if (isAbsent(status)) {
+                            return (
+                              <td
+                                key={type}
+                                colSpan={1 + nosCount}
+                                className="border-l border-slate-100 px-5 py-3 text-center"
+                              >
+                                <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700">
+                                  Absent
+                                </span>
+                              </td>
+                            );
+                          }
+
                           return (
-                            <td
-                              key={col}
-                              className="whitespace-nowrap px-5 py-3 text-xs text-slate-700"
-                            >
-                              {status ? (
-                                <StatusBadge value={raw} status={status} />
-                              ) : (
-                                formatCell(raw)
-                              )}
-                            </td>
+                            <FragmentCols key={type}>
+                              <td className="whitespace-nowrap border-l border-slate-100 px-5 py-3 text-xs">
+                                <StatusBadge value={status} />
+                              </td>
+                              {(header[type] || []).map((nos) => (
+                                <td
+                                  key={`${type}-${nos.code}`}
+                                  className="whitespace-nowrap px-5 py-3 text-center text-xs font-semibold text-slate-700"
+                                >
+                                  {getNosMark(row, type, nos.code)}
+                                </td>
+                              ))}
+                            </FragmentCols>
                           );
                         })}
                       </tr>
@@ -429,7 +410,13 @@ export default function ReportsPage() {
                     {filteredRows.length === 0 && (
                       <tr>
                         <td
-                          colSpan={columns.length + 1}
+                          colSpan={
+                            3 +
+                            activeTypes.reduce(
+                              (sum, t) => sum + 1 + (header[t]?.length ?? 0),
+                              0
+                            )
+                          }
                           className="px-5 py-12 text-center text-sm text-slate-400"
                         >
                           No results match “{search}”.
@@ -449,6 +436,11 @@ export default function ReportsPage() {
 
 /* ── Sub-components ──────────────────────────────────── */
 
+// Renders a set of <th>/<td> siblings without an extra wrapper element.
+function FragmentCols({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
 function StatCard({
   icon,
   label,
@@ -458,13 +450,14 @@ function StatCard({
   icon: React.ReactNode;
   label: string;
   value: string | number;
-  tone: "slate" | "emerald" | "red" | "indigo";
+  tone: "slate" | "emerald" | "red" | "indigo" | "amber";
 }) {
   const tones: Record<string, string> = {
     slate: "bg-slate-100 text-slate-600",
     emerald: "bg-emerald-50 text-emerald-600",
     red: "bg-red-50 text-red-600",
     indigo: "bg-indigo-50 text-indigo-600",
+    amber: "bg-amber-50 text-amber-600",
   };
   return (
     <div className="glass-panel flex items-center gap-4 rounded-[1.75rem] border border-white/80 px-5 py-5 shadow-soft shadow-slate-900/5">
@@ -481,11 +474,15 @@ function StatCard({
   );
 }
 
-function StatusBadge({ value, status }: { value: any; status: string }) {
+function StatusBadge({ value }: { value: any }) {
+  const status = String(value ?? "").toLowerCase();
+  if (!status) {
+    return <span className="text-slate-300">—</span>;
+  }
   let cls = "bg-slate-100 text-slate-600 border-slate-200";
-  if (/pass|submit|complete|done|present/.test(status)) {
+  if (/pass|submit|complete|done|present|authorized/.test(status)) {
     cls = "bg-emerald-50 text-emerald-700 border-emerald-200";
-  } else if (/fail|absent|reject/.test(status)) {
+  } else if (/fail|absent|reject|unauthorized/.test(status)) {
     cls = "bg-red-50 text-red-700 border-red-200";
   } else if (/pending|progress|not/.test(status)) {
     cls = "bg-amber-50 text-amber-700 border-amber-200";

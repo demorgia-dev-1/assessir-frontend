@@ -63,9 +63,17 @@ function getErrorMessage(error: any, fallback: string) {
 
 export const fetchBatchReport = createAsyncThunk(
   "reports/fetchBatchReport",
-  async (batchId: string | number, { rejectWithValue }) => {
+  async (
+    {
+      batchId,
+      jobRoleId,
+    }: { batchId: string | number; jobRoleId?: string | number },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await api.get(`/batches/${batchId}/report`);
+      const response = await api.get(`/batches/${batchId}/report-json`, {
+        params: jobRoleId ? { jobrole_id: jobRoleId } : undefined,
+      });
       return { batchId, data: response.data };
     } catch (error: any) {
       const message = getErrorMessage(error, "Failed to fetch batch report");

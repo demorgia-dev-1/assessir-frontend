@@ -9,6 +9,8 @@ import {
   FiEdit2,
   FiEye,
   FiEyeOff,
+  FiRefreshCw,
+  FiUserCheck,
   FiPlus,
   FiTrash2,
   FiUploadCloud,
@@ -45,6 +47,8 @@ import {
 import {
   fetchCandidates,
   createCandidates,
+  deleteCandidatesFromBatch,
+  resetCandidate,
   clearCandidates,
 } from "@/store/slices/candidates-slice";
 import {
@@ -201,12 +205,30 @@ function getPcCode(pc: { code?: string; pc_code?: string }) {
   return pc.code || pc.pc_code || "";
 }
 
+// Which test types a batch actually has configured (so the slot scheduler
+// only offers theory/practical/viva that carry marks). Falls back to all
+// three if nothing can be detected on the batch object.
+function getBatchTestTypeOptions(batch: any) {
+  const types = [
+    { value: "theory", label: "Theory" },
+    { value: "practical", label: "Practical" },
+    { value: "viva", label: "Viva" },
+  ];
+  const available = types.filter(
+    (t) =>
+      Boolean(batch?.[`${t.value}_test`]) ||
+      Boolean(batch?.[`${t.value}_test_id`]) ||
+      Number(batch?.[`total_${t.value}_marks`]) > 0 ||
+      Number(batch?.[`${t.value}_time`]) > 0 ||
+      (Array.isArray(batch?.sections) &&
+        batch.sections.some((s: any) => s?.type === t.value))
+  );
+  return available.length ? available : types;
+}
+
 // A NOS belongs to a section only if it carries marks for that test type
 // (theory section → NOS with theory marks, and so on).
-function nosMatchesSectionType(
-  nos: JobRoleNos,
-  sectionType: BatchSectionType
-) {
+function nosMatchesSectionType(nos: JobRoleNos, sectionType: BatchSectionType) {
   if (sectionType === "practical") {
     return Number(nos.total_practical_marks) > 0;
   }
@@ -217,11 +239,7 @@ function nosMatchesSectionType(
 }
 
 // Cache key for the "questions available in a NOS" lookup.
-function nosCountKey(
-  nosId: string | number,
-  difficulty: string,
-  type: string
-) {
+function nosCountKey(nosId: string | number, difficulty: string, type: string) {
   return `${nosId}__${difficulty}__${type}`;
 }
 
@@ -397,6 +415,8 @@ export default function BatchesPage() {
   const {
     candidates: batchCandidates,
     loading: candidatesLoading,
+    deleting: candidatesDeleting,
+    resetting: candidatesResetting,
     error: candidatesError,
   } = useAppSelector((state) => state.candidates);
   const { sectors } = useAppSelector((state) => state.sectors);
@@ -443,10 +463,24 @@ export default function BatchesPage() {
   const [loadingPasswords, setLoadingPasswords] = useState<
     Record<string, boolean>
   >({});
+  const [candidateSelectedIds, setCandidateSelectedIds] = useState<
+    Set<string | number>
+  >(new Set());
+  const [showCandidateDeleteModal, setShowCandidateDeleteModal] =
+    useState(false);
+  const [resetCandidateId, setResetCandidateId] = useState<
+    string | number | null
+  >(null);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceTestType, setAttendanceTestType] = useState<
+    "theory" | "practical" | "viva"
+  >("theory");
+  const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [schedulingBatchId, setSchedulingBatchId] = useState<
     string | number | null
   >(null);
+  const [schedulingBatchDetail, setSchedulingBatchDetail] = useState<any>(null);
   const [slotForm, setSlotForm] = useState({
     testType: "THEORY",
     startDateTime: "",
@@ -668,10 +702,28 @@ export default function BatchesPage() {
     }
   };
 
-  const handleOpenSlotModal = (batchId: string | number) => {
+  const schedulingBatchTestTypes = useMemo(
+    () =>
+      getBatchTestTypeOptions(
+        schedulingBatchDetail ??
+          batches.find((b) => String(b.id) === String(schedulingBatchId))
+      ),
+    [schedulingBatchDetail, batches, schedulingBatchId]
+  );
+
+  const handleOpenSlotModal = async (batchId: string | number) => {
     setSchedulingBatchId(batchId);
     setSlotForm({ testType: "", startDateTime: "", endDateTime: "" });
+    setSchedulingBatchDetail(null);
     setSlotModalOpen(true);
+    // Fetch full batch detail so we know which test types (theory/practical/
+    // viva) actually exist for this batch.
+    try {
+      const res = await api.get(`/batches/${batchId}`);
+      setSchedulingBatchDetail(res.data?.batch ?? res.data ?? null);
+    } catch {
+      setSchedulingBatchDetail(null);
+    }
   };
 
   const handleSlotSubmit = async (e: React.FormEvent) => {
@@ -850,6 +902,23 @@ export default function BatchesPage() {
     setExcelParsedCandidates([]);
     setRevealedPasswords({});
     setLoadingPasswords({});
+    setCandidateSelectedIds(new Set());
+    dispatch(fetchBatchById(id));
+    dispatch(fetchCandidates(id));
+  };
+
+  const handleAddCandidates = (id: string | number) => {
+    setDetailsOpen(true);
+    setDetailsTab("candidates");
+    setIsAddingManually(false);
+    setManualCandidates([{ enrollment_no: "", password: "" }]);
+    setIsUploadingExcel(false);
+    setExcelFile(null);
+    setExcelValidationErrors([]);
+    setExcelParsedCandidates([]);
+    setRevealedPasswords({});
+    setLoadingPasswords({});
+    setCandidateSelectedIds(new Set());
     dispatch(fetchBatchById(id));
     dispatch(fetchCandidates(id));
   };
@@ -894,6 +963,91 @@ export default function BatchesPage() {
       toast.error(message);
     } finally {
       setLoadingPasswords((prev) => ({ ...prev, [enrollmentNo]: false }));
+    }
+  };
+
+  const toggleCandidateSelect = (id: string | number) => {
+    setCandidateSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleCandidateSelectAll = () => {
+    if (candidateSelectedIds.size === batchCandidates.length) {
+      setCandidateSelectedIds(new Set());
+    } else {
+      setCandidateSelectedIds(
+        new Set(batchCandidates.map((cand) => cand.id!))
+      );
+    }
+  };
+
+  const handleConfirmCandidateDelete = async () => {
+    if (!selectedBatch || candidateSelectedIds.size === 0) return;
+
+    const actionResult = await dispatch(
+      deleteCandidatesFromBatch({
+        batchId: selectedBatch.id,
+        candidateIds: Array.from(candidateSelectedIds),
+      })
+    );
+
+    if (deleteCandidatesFromBatch.fulfilled.match(actionResult)) {
+      setCandidateSelectedIds(new Set());
+      setShowCandidateDeleteModal(false);
+      dispatch(fetchCandidates(selectedBatch.id));
+    }
+  };
+
+  const handleConfirmResetCandidate = async () => {
+    if (!selectedBatch || !resetCandidateId) return;
+
+    const actionResult = await dispatch(
+      resetCandidate({
+        batchId: selectedBatch.id,
+        candidateId: resetCandidateId,
+      })
+    );
+
+    if (resetCandidate.fulfilled.match(actionResult)) {
+      setResetCandidateId(null);
+      dispatch(fetchCandidates(selectedBatch.id));
+    }
+  };
+
+  const handleMarkAttendance = async () => {
+    if (!selectedBatch || candidateSelectedIds.size === 0) return;
+    setIsMarkingAttendance(true);
+    try {
+      const res = await api.post(
+        `/batches/${selectedBatch.id}/mark-attendance?testType=${attendanceTestType}`,
+        { candidate_ids: Array.from(candidateSelectedIds) }
+      );
+      if (res.data?.error) {
+        toast.error(res.data.error);
+      } else {
+        toast.success(
+          `Attendance marked for ${candidateSelectedIds.size} candidate${
+            candidateSelectedIds.size > 1 ? "s" : ""
+          } (${attendanceTestType}).`
+        );
+        setShowAttendanceModal(false);
+        setCandidateSelectedIds(new Set());
+      }
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        "Failed to mark attendance.";
+      toast.error(msg);
+    } finally {
+      setIsMarkingAttendance(false);
     }
   };
 
@@ -1174,6 +1328,14 @@ export default function BatchesPage() {
                               className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
                             >
                               <FiEye className="h-4.5 w-4.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Add Candidates">
+                            <button
+                              onClick={() => handleAddCandidates(batch.id)}
+                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
+                            >
+                              <FiUsers className="h-4.5 w-4.5" />
                             </button>
                           </Tooltip>
                           <Tooltip label="Configure Batch Time">
@@ -1536,30 +1698,30 @@ export default function BatchesPage() {
                           ])
                     )
                     .map(({ key, label }) => (
-                    <label
-                      key={key}
-                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
-                    >
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={form[key]}
-                        onClick={() => setFormField(key, !form[key])}
-                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                          form[key] ? "bg-slate-950" : "bg-slate-200"
-                        }`}
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
                       >
-                        <span
-                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                            form[key] ? "translate-x-4" : "translate-x-1"
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={form[key]}
+                          onClick={() => setFormField(key, !form[key])}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                            form[key] ? "bg-slate-950" : "bg-slate-200"
                           }`}
-                        />
-                      </button>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {label}
-                      </span>
-                    </label>
-                  ))}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                              form[key] ? "translate-x-4" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {label}
+                        </span>
+                      </label>
+                    ))}
                 </div>
               </div>
 
@@ -1600,30 +1762,30 @@ export default function BatchesPage() {
                           ])
                     )
                     .map(({ key, label }) => (
-                    <label
-                      key={key}
-                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
-                    >
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={form[key]}
-                        onClick={() => setFormField(key, !form[key])}
-                        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                          form[key] ? "bg-slate-950" : "bg-slate-200"
-                        }`}
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
                       >
-                        <span
-                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                            form[key] ? "translate-x-4" : "translate-x-1"
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={form[key]}
+                          onClick={() => setFormField(key, !form[key])}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
+                            form[key] ? "bg-slate-950" : "bg-slate-200"
                           }`}
-                        />
-                      </button>
-                      <span className="text-sm font-semibold text-slate-700">
-                        {label}
-                      </span>
-                    </label>
-                  ))}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                              form[key] ? "translate-x-4" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm font-semibold text-slate-700">
+                          {label}
+                        </span>
+                      </label>
+                    ))}
                 </div>
               </div>
 
@@ -1637,6 +1799,7 @@ export default function BatchesPage() {
                     <input
                       type="number"
                       min={0}
+                      onWheel={(e) => e.currentTarget.blur()}
                       value={form.theory_time ?? 0}
                       onChange={(e) =>
                         setFormField(
@@ -1655,6 +1818,7 @@ export default function BatchesPage() {
                       <input
                         type="number"
                         min={0}
+                        onWheel={(e) => e.currentTarget.blur()}
                         value={form.practical_time ?? 0}
                         onChange={(e) =>
                           setFormField(
@@ -1673,6 +1837,7 @@ export default function BatchesPage() {
                       <input
                         type="number"
                         min={0}
+                        onWheel={(e) => e.currentTarget.blur()}
                         value={form.viva_time ?? 0}
                         onChange={(e) =>
                           setFormField(
@@ -1915,24 +2080,57 @@ export default function BatchesPage() {
                                           : section.type === "viva"
                                           ? "V"
                                           : "T";
-                                      const badgeClass =
-                                        section.type === "practical"
-                                          ? "bg-emerald-50 text-emerald-600"
-                                          : section.type === "viva"
-                                          ? "bg-amber-50 text-amber-600"
-                                          : "bg-blue-50 text-blue-600";
+                                      const total = Number(mark) || 0;
+                                      // Marks already allocated to this NOS
+                                      // across every section of this test type
+                                      // (each row uses correct_mark × questions).
+                                      const consumed = form.sections.reduce(
+                                        (sum, sec) => {
+                                          if (sec.type !== section.type)
+                                            return sum;
+                                          return (
+                                            sum +
+                                            sec.nos_list.reduce(
+                                              (rowSum, rowNos) =>
+                                                rowNos.nos_code === nos.nos_code
+                                                  ? rowSum +
+                                                    (Number(
+                                                      rowNos.correct_mark
+                                                    ) || 0) *
+                                                      (Number(
+                                                        rowNos.question_count
+                                                      ) || 0)
+                                                  : rowSum,
+                                              0
+                                            )
+                                          );
+                                        },
+                                        0
+                                      );
+                                      const remaining = total - consumed;
+                                      const over = remaining < 0;
+                                      const badgeClass = over
+                                        ? "bg-red-50 text-red-600"
+                                        : section.type === "practical"
+                                        ? "bg-emerald-50 text-emerald-600"
+                                        : section.type === "viva"
+                                        ? "bg-amber-50 text-amber-600"
+                                        : "bg-blue-50 text-blue-600";
                                       return (
                                         <span
                                           className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${badgeClass}`}
+                                          title={`${consumed} of ${total} marks allocated`}
                                         >
-                                          {label}:{Number(mark) || 0}
+                                          {label}: {remaining}/{total} left
                                         </span>
                                       );
                                     })()}
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => removeNos(sectionIndex, nosIndex)}
+                                  onClick={() =>
+                                    removeNos(sectionIndex, nosIndex)
+                                  }
                                   title="Remove NOS"
                                   className="shrink-0 rounded-lg border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50"
                                 >
@@ -1983,6 +2181,7 @@ export default function BatchesPage() {
                                   <input
                                     type="number"
                                     value={nos.question_count}
+                                    onWheel={(e) => e.currentTarget.blur()}
                                     onChange={(event) =>
                                       updateNos(sectionIndex, nosIndex, {
                                         ...nos,
@@ -2027,6 +2226,7 @@ export default function BatchesPage() {
                                   <input
                                     type="number"
                                     value={nos.correct_mark}
+                                    onWheel={(e) => e.currentTarget.blur()}
                                     onChange={(event) =>
                                       updateNos(sectionIndex, nosIndex, {
                                         ...nos,
@@ -2040,6 +2240,7 @@ export default function BatchesPage() {
                                   <input
                                     type="number"
                                     value={nos.negative_mark}
+                                    onWheel={(e) => e.currentTarget.blur()}
                                     onChange={(event) =>
                                       updateNos(sectionIndex, nosIndex, {
                                         ...nos,
@@ -2069,6 +2270,9 @@ export default function BatchesPage() {
                                           <input
                                             type="number"
                                             value={pc.question_count}
+                                            onWheel={(e) =>
+                                              e.currentTarget.blur()
+                                            }
                                             onChange={(event) =>
                                               updatePc(
                                                 sectionIndex,
@@ -2131,6 +2335,9 @@ export default function BatchesPage() {
                                           <input
                                             type="number"
                                             value={pc.correct_mark}
+                                            onWheel={(e) =>
+                                              e.currentTarget.blur()
+                                            }
                                             onChange={(event) =>
                                               updatePc(
                                                 sectionIndex,
@@ -2149,6 +2356,9 @@ export default function BatchesPage() {
                                           <input
                                             type="number"
                                             value={pc.negative_mark}
+                                            onWheel={(e) =>
+                                              e.currentTarget.blur()
+                                            }
                                             onChange={(event) =>
                                               updatePc(
                                                 sectionIndex,
@@ -2704,11 +2914,53 @@ export default function BatchesPage() {
                             </div>
                           ) : batchCandidates.length > 0 ? (
                             <div className="overflow-hidden rounded-2xl border border-slate-150 shadow-sm">
+                              {candidateSelectedIds.size > 0 && (
+                                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-2.5">
+                                  <span className="text-xs font-semibold text-slate-700">
+                                    {candidateSelectedIds.size} selected
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowAttendanceModal(true)
+                                      }
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                                    >
+                                      <FiUserCheck className="h-3.5 w-3.5" />
+                                      Mark Attendance
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowCandidateDeleteModal(true)
+                                      }
+                                      disabled={candidatesDeleting}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+                                    >
+                                      <FiTrash2 className="h-3.5 w-3.5" />
+                                      Delete Selected
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                               <table className="w-full text-left">
                                 <thead className="bg-slate-50/70 border-b border-slate-150">
                                   <tr>
+                                    <th className="px-4 py-3.5">
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          batchCandidates.length > 0 &&
+                                          candidateSelectedIds.size ===
+                                            batchCandidates.length
+                                        }
+                                        onChange={toggleCandidateSelectAll}
+                                        className="h-4 w-4 rounded border-slate-300 accent-slate-950 cursor-pointer"
+                                      />
+                                    </th>
                                     <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                      ID
+                                      #
                                     </th>
                                     <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                                       Enrollment No
@@ -2716,21 +2968,49 @@ export default function BatchesPage() {
                                     <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                                       Password
                                     </th>
+                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                      Actions
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                   {batchCandidates.map((cand, idx) => (
                                     <tr
                                       key={cand.id || idx}
-                                      className="hover:bg-slate-50/50 transition-colors"
+                                      onClick={() =>
+                                        toggleCandidateSelect(cand.id!)
+                                      }
+                                      className={`cursor-pointer transition-colors hover:bg-slate-50/50 ${
+                                        candidateSelectedIds.has(cand.id!)
+                                          ? "bg-red-50/40"
+                                          : ""
+                                      }`}
                                     >
+                                      <td
+                                        className="px-4 py-3"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={candidateSelectedIds.has(
+                                            cand.id!
+                                          )}
+                                          onChange={() =>
+                                            toggleCandidateSelect(cand.id!)
+                                          }
+                                          className="h-4 w-4 rounded border-slate-300 accent-slate-950 cursor-pointer"
+                                        />
+                                      </td>
                                       <td className="px-5 py-3 text-xs font-medium text-slate-400">
                                         {idx + 1}
                                       </td>
                                       <td className="px-5 py-3 text-xs font-semibold text-slate-900">
                                         {cand.enrollment_no}
                                       </td>
-                                      <td className="px-5 py-3 text-xs text-slate-600">
+                                      <td
+                                        className="px-5 py-3 text-xs text-slate-600"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
                                         <div className="flex items-center gap-2">
                                           <code className="bg-slate-50 rounded px-2 py-0.5 font-mono text-[11px] border border-slate-100 min-w-[80px] text-center inline-block">
                                             {revealedPasswords[
@@ -2794,6 +3074,22 @@ export default function BatchesPage() {
                                             )}
                                           </button>
                                         </div>
+                                      </td>
+                                      <td
+                                        className="px-5 py-3 text-xs"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setResetCandidateId(cand.id!)
+                                          }
+                                          disabled={candidatesResetting}
+                                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+                                        >
+                                          <FiRefreshCw className="h-3.5 w-3.5" />
+                                          Reset
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}
@@ -2882,9 +3178,11 @@ export default function BatchesPage() {
                   className={INPUT_CLASS}
                 >
                   <option value="">Select test type</option>
-                  <option value="theory">Theory</option>
-                  <option value="practical">Practical</option>
-                  <option value="viva">Viva</option>
+                  {schedulingBatchTestTypes.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -2936,6 +3234,160 @@ export default function BatchesPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Candidate bulk delete confirmation */}
+      {showCandidateDeleteModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+                <FiAlertTriangle className="h-6 w-6 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Remove Candidates
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Action is Permanent
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Are you sure you want to remove{" "}
+              <span className="font-semibold text-slate-950">
+                {candidateSelectedIds.size} candidate
+                {candidateSelectedIds.size > 1 ? "s" : ""}
+              </span>{" "}
+              from this batch?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCandidateDeleteModal(false)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={candidatesDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCandidateDelete}
+                className="flex-1 rounded-2xl bg-red-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50"
+                disabled={candidatesDeleting}
+              >
+                {candidatesDeleting ? "Removing…" : "Remove Candidates"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate reset confirmation */}
+      {resetCandidateId && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
+                <FiAlertTriangle className="h-6 w-6 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Reset Candidate
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Please Confirm
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Are you sure you want to reset candidate{" "}
+              <span className="font-semibold text-slate-950">
+                {batchCandidates.find((c) => c.id === resetCandidateId)
+                  ?.enrollment_no || resetCandidateId}
+              </span>
+              ? This will clear their exam progress.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setResetCandidateId(null)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={candidatesResetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResetCandidate}
+                className="flex-1 rounded-2xl bg-amber-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 transition hover:bg-amber-600 disabled:opacity-50"
+                disabled={candidatesResetting}
+              >
+                {candidatesResetting ? "Resetting…" : "Reset Candidate"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark attendance modal */}
+      {showAttendanceModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <FiUserCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
+                  Mark Attendance
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {candidateSelectedIds.size} Candidate
+                  {candidateSelectedIds.size > 1 ? "s" : ""} Selected
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Test Type
+              </label>
+              <select
+                value={attendanceTestType}
+                onChange={(e) =>
+                  setAttendanceTestType(
+                    e.target.value as "theory" | "practical" | "viva"
+                  )
+                }
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+              >
+                <option value="theory">Theory</option>
+                <option value="practical">Practical</option>
+                <option value="viva">Viva</option>
+              </select>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAttendanceModal(false)}
+                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={isMarkingAttendance}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMarkAttendance}
+                className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50"
+                disabled={isMarkingAttendance}
+              >
+                {isMarkingAttendance ? "Marking…" : "Confirm Attendance"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>
