@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import {
   FiUsers,
@@ -29,7 +29,7 @@ import {
   clearCandidates,
   setSelectedBatchId,
 } from "@/store/slices/candidates-slice";
-import { fetchBatches } from "@/store/slices/batches-slice";
+import { Batch, fetchBatchById, fetchBatches } from "@/store/slices/batches-slice";
 import {
   downloadCandidatesTemplate,
   parseCandidatesExcelFile,
@@ -39,6 +39,31 @@ const INPUT_CLASS =
   "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 
 type RightPanelView = "idle" | "manual" | "excel";
+type AttendanceTestType = "theory" | "practical" | "viva";
+
+const ATTENDANCE_TEST_TYPES: Array<{
+  value: AttendanceTestType;
+  label: string;
+  testKey: `${AttendanceTestType}_test`;
+  idKey: `${AttendanceTestType}_test_id`;
+}> = [
+  { value: "theory", label: "Theory", testKey: "theory_test", idKey: "theory_test_id" },
+  {
+    value: "practical",
+    label: "Practical",
+    testKey: "practical_test",
+    idKey: "practical_test_id",
+  },
+  { value: "viva", label: "Viva", testKey: "viva_test", idKey: "viva_test_id" },
+];
+
+function getAttendanceTestOptions(batch: Batch | null | undefined) {
+  if (!batch) return [];
+  const detail = batch as Batch & Record<string, unknown>;
+  return ATTENDANCE_TEST_TYPES.filter(
+    (type) => Boolean(detail[type.testKey]) || Boolean(detail[type.idKey])
+  );
+}
 
 export default function CandidatesPage() {
   const dispatch = useAppDispatch();
@@ -52,7 +77,11 @@ export default function CandidatesPage() {
     error,
     selectedBatchId,
   } = useAppSelector((state) => state.candidates);
-  const { batches, loading: batchesLoading } = useAppSelector(
+  const {
+    batches,
+    loading: batchesLoading,
+    selectedBatch: selectedBatchDetail,
+  } = useAppSelector(
     (state) => state.batches
   );
 
@@ -75,7 +104,8 @@ export default function CandidatesPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [resetCandidateId, setResetCandidateId] = useState<string | number | null>(null);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-  const [attendanceTestType, setAttendanceTestType] = useState<"theory" | "practical" | "viva">("theory");
+  const [attendanceTestType, setAttendanceTestType] =
+    useState<AttendanceTestType>("theory");
   const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
 
   useEffect(() => {
@@ -85,6 +115,24 @@ export default function CandidatesPage() {
   const selectedBatch = batches.find(
     (b) => String(b.id) === String(selectedBatchId)
   );
+  const attendanceBatch =
+    selectedBatchDetail &&
+    String(selectedBatchDetail.id) === String(selectedBatchId)
+      ? selectedBatchDetail
+      : selectedBatch;
+  const attendanceTestOptions = useMemo(
+    () => getAttendanceTestOptions(attendanceBatch),
+    [attendanceBatch]
+  );
+
+  useEffect(() => {
+    if (
+      attendanceTestOptions.length > 0 &&
+      !attendanceTestOptions.some((type) => type.value === attendanceTestType)
+    ) {
+      setAttendanceTestType(attendanceTestOptions[0].value);
+    }
+  }, [attendanceTestOptions, attendanceTestType]);
 
   const resetRightPanel = () => {
     setRightPanel("idle");
@@ -106,6 +154,7 @@ export default function CandidatesPage() {
       return;
     }
     dispatch(setSelectedBatchId(batchId));
+    dispatch(fetchBatchById(batchId));
     dispatch(fetchCandidates(batchId));
     resetRightPanel();
     setRevealedPasswords({});
@@ -267,6 +316,10 @@ export default function CandidatesPage() {
 
   const handleMarkAttendance = async () => {
     if (!selectedBatchId || selectedIds.size === 0) return;
+    if (attendanceTestOptions.length === 0) {
+      toast.error("No test is available for attendance in this batch.");
+      return;
+    }
     setIsMarkingAttendance(true);
     try {
       const res = await api.post(
@@ -444,7 +497,14 @@ export default function CandidatesPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setShowAttendanceModal(true)}
+                        onClick={() => {
+                          if (attendanceTestOptions[0]) {
+                            setAttendanceTestType(
+                              attendanceTestOptions[0].value
+                            );
+                          }
+                          setShowAttendanceModal(true);
+                        }}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                       >
                         <FiUserCheck className="h-3.5 w-3.5" />
@@ -1008,12 +1068,21 @@ export default function CandidatesPage() {
               </label>
               <select
                 value={attendanceTestType}
-                onChange={(e) => setAttendanceTestType(e.target.value as "theory" | "practical" | "viva")}
+                disabled={attendanceTestOptions.length === 0}
+                onChange={(e) =>
+                  setAttendanceTestType(e.target.value as AttendanceTestType)
+                }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
               >
-                <option value="theory">Theory</option>
-                <option value="practical">Practical</option>
-                <option value="viva">Viva</option>
+                {attendanceTestOptions.length > 0 ? (
+                  attendanceTestOptions.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value={attendanceTestType}>No tests available</option>
+                )}
               </select>
             </div>
 
@@ -1042,7 +1111,7 @@ export default function CandidatesPage() {
                 type="button"
                 onClick={handleMarkAttendance}
                 className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]"
-                disabled={isMarkingAttendance}
+                disabled={isMarkingAttendance || attendanceTestOptions.length === 0}
               >
                 {isMarkingAttendance ? "Marking…" : "Confirm Attendance"}
               </button>

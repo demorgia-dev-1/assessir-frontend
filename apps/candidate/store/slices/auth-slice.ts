@@ -51,6 +51,31 @@ function extractExamStatuses(data: any): ExamStatuses {
   };
 }
 
+function extractBatchDetails(data: any) {
+  if (!data?.batch) return null;
+  return {
+    ...data.batch,
+    onboardinig_selfie_uploaded_theory:
+      data.onboardinig_selfie_uploaded_theory ??
+      data.batch.onboardinig_selfie_uploaded_theory ??
+      null,
+    onboardinig_selfie_uploaded_practical:
+      data.onboardinig_selfie_uploaded_practical ??
+      data.batch.onboardinig_selfie_uploaded_practical ??
+      null,
+    onboardinig_selfie_uploaded_viva:
+      data.onboardinig_selfie_uploaded_viva ??
+      data.batch.onboardinig_selfie_uploaded_viva ??
+      null,
+    theory_exam_status:
+      data.theory_exam_status ?? data.batch.theory_exam_status ?? null,
+    practical_exam_status:
+      data.practical_exam_status ?? data.batch.practical_exam_status ?? null,
+    viva_exam_status:
+      data.viva_exam_status ?? data.batch.viva_exam_status ?? null
+  };
+}
+
 function decodeBase64Url(value: string) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized.padEnd(
@@ -139,7 +164,7 @@ export const loginCandidateAction = createAsyncThunk<
     const session = parseJwt(token);
 
     // Persist batch details and exam statuses to sessionStorage
-    const batch = data.batch || null;
+    const batch = extractBatchDetails(data);
     const examStatuses = extractExamStatuses(data);
     if (typeof window !== "undefined") {
       if (batch) {

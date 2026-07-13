@@ -56,6 +56,7 @@ const SECTION_HEADERS = ["BATCH NAME", "SECTION NAME", "TYPE"] as const;
 
 const NOS_HEADERS = [
   "SECTION NAME",
+  "TYPE",
   "NOS NAME",
   "NOS CODE",
   "NOS MAX THEORY MARKS",
@@ -163,7 +164,7 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
   const sections = [
     {
       "BATCH NAME": batchName,
-      "SECTION NAME": "Theory Section",
+      "SECTION NAME": "Section#1",
       TYPE: "theory",
     },
   ];
@@ -171,7 +172,7 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
   if (jobRole.total_practical_marks > 0) {
     sections.push({
       "BATCH NAME": batchName,
-      "SECTION NAME": "Practical Section",
+      "SECTION NAME": "Section#1",
       TYPE: "practical",
     });
   }
@@ -179,7 +180,7 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
   if (jobRole.total_viva_marks > 0) {
     sections.push({
       "BATCH NAME": batchName,
-      "SECTION NAME": "Viva Section",
+      "SECTION NAME": "Section#1",
       TYPE: "viva",
     });
   }
@@ -193,6 +194,7 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
     for (const section of sections) {
       nosList.push({
         "SECTION NAME": section["SECTION NAME"],
+        TYPE: section["TYPE"],
         "NOS NAME": nos.name || "",
         "NOS CODE": nosCode,
         "NOS MAX THEORY MARKS": numberValue(nos.total_theory_marks),
@@ -209,7 +211,8 @@ export function downloadBatchesTemplate(jobRole: JobRole) {
 
   if (nosList.length === 0) {
     nosList.push({
-      "SECTION NAME": "Theory Section",
+      "SECTION NAME": "Section#1",
+      TYPE: "theory",
       "NOS NAME": "",
       "NOS CODE": "NOS-001",
       "NOS MAX THEORY MARKS": 0,
@@ -282,10 +285,16 @@ export function parseBatchesExcelFile(
     };
   }
 
+  // Key NOS rows by section name + type so different test types can reuse the
+  // same section name (e.g. "Section#1" for theory, practical and viva).
+  const nosKey = (name: string, type: string) =>
+    `${name.trim().toLowerCase()}__${(type || "").trim().toLowerCase()}`;
+
   const nosBySectionName = new Map<string, BatchNosRequest[]>();
   nosRows.forEach((row, rowIndex) => {
     const prefix = `${NOS_SHEET} row ${rowIndex + 2}`;
     const sectionName = stringValue(row["SECTION NAME"]);
+    const sectionType = parseSectionType(row["TYPE"]) || "";
     const nosCode = stringValue(row["NOS CODE"]);
     const difficulty = parseDifficulty(row["DIFFICULTY"]);
     const questionType = parseQuestionType(row["QUESTION TYPE"]);
@@ -314,10 +323,8 @@ export function parseBatchesExcelFile(
       negative_mark: numberValue(row["NEGATIVE MARK"]),
     };
 
-    nosBySectionName.set(sectionName, [
-      ...(nosBySectionName.get(sectionName) || []),
-      nos,
-    ]);
+    const key = nosKey(sectionName, sectionType);
+    nosBySectionName.set(key, [...(nosBySectionName.get(key) || []), nos]);
   });
 
   const sectionsByBatchName = new Map<string, ParsedSection[]>();
@@ -335,10 +342,17 @@ export function parseBatchesExcelFile(
       return;
     }
 
+    // Match NOS rows by name + type; fall back to name-only (older templates
+    // that had unique section names and no TYPE column on the NOS sheet).
+    const nos_list =
+      nosBySectionName.get(nosKey(sectionName, type)) ||
+      nosBySectionName.get(nosKey(sectionName, "")) ||
+      [];
+
     const section: ParsedSection = {
       name: sectionName,
       type,
-      nos_list: nosBySectionName.get(sectionName) || [],
+      nos_list,
     };
 
     if (!section.nos_list.length) {

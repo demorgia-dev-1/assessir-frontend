@@ -472,9 +472,15 @@ function ExamDashboardInner() {
                     | "theory"
                     | "practical"
                     | "viva";
-                  const status = examStatuses?.[testType] ?? null;
+                  const status =
+                    examStatuses?.[testType] ??
+                    batch[
+                      `${testType}_exam_status` as keyof BatchData
+                    ] ??
+                    null;
                   const isSubmitted =
                     status === "submitted" || status === "completed";
+                  const isUnauthorized = status === "unauthorized";
 
                   const questionCount =
                     test.sections?.reduce(
@@ -489,6 +495,8 @@ function ExamDashboardInner() {
                       className={`group flex flex-col overflow-hidden rounded-2xl border shadow-sm transition ${
                         isSubmitted
                           ? "border-emerald-200 bg-emerald-50/30"
+                          : isUnauthorized
+                          ? "border-amber-200 bg-amber-50/30"
                           : "border-blue-100/80 bg-white hover:shadow-md hover:border-blue-200"
                       }`}
                     >
@@ -496,13 +504,25 @@ function ExamDashboardInner() {
                       <div className={`border-b px-6 py-4 ${
                         isSubmitted
                           ? "border-emerald-100 bg-emerald-50/60"
+                          : isUnauthorized
+                          ? "border-amber-100 bg-amber-50/60"
                           : "border-blue-50 bg-blue-50/40"
                       }`}>
                         <div className="flex items-center gap-3">
                           <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${
-                            isSubmitted ? "bg-emerald-600" : "bg-blue-600"
+                            isSubmitted
+                              ? "bg-emerald-600"
+                              : isUnauthorized
+                              ? "bg-amber-500"
+                              : "bg-blue-600"
                           }`}>
-                            {isSubmitted ? <FiCheck className="h-5 w-5" /> : card.icon}
+                            {isSubmitted ? (
+                              <FiCheck className="h-5 w-5" />
+                            ) : isUnauthorized ? (
+                              <FiAlertTriangle className="h-5 w-5" />
+                            ) : (
+                              card.icon
+                            )}
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-slate-900">
@@ -511,6 +531,11 @@ function ExamDashboardInner() {
                             {isSubmitted && (
                               <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
                                 Submitted
+                              </p>
+                            )}
+                            {isUnauthorized && (
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                                Unauthorized
                               </p>
                             )}
                           </div>
@@ -558,6 +583,15 @@ function ExamDashboardInner() {
                             <FiCheck className="h-4 w-4" />
                             Exam Submitted
                           </div>
+                        ) : isUnauthorized ? (
+                          <button
+                            className="mt-6 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-amber-100 px-5 py-3 text-sm font-semibold text-amber-700"
+                            disabled
+                            type="button"
+                          >
+                            <FiAlertTriangle className="h-4 w-4" />
+                            Unauthorized
+                          </button>
                         ) : (
                           <button
                             onClick={() =>

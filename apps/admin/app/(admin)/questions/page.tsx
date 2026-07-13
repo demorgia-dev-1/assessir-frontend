@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import {
   FiAlertTriangle,
@@ -36,177 +37,18 @@ import {
   Question,
   updateQuestion,
 } from "@/store/slices/questions-slice";
-
-const DEFAULT_OPTIONS = [
-  { text: "", is_correct: false },
-  { text: "", is_correct: false },
-  { text: "", is_correct: false },
-  { text: "", is_correct: false },
-];
-
-const DEFAULT_SCORES = [
-  { label: "excellent", percentage: 100 },
-  { label: "very_good", percentage: 80 },
-  { label: "good", percentage: 60 },
-  { label: "poor", percentage: 30 },
-  { label: "very_poor", percentage: 0 },
-];
-
-function createEmptyForm(): QuestionFormValues {
-  return {
-    text: "",
-    type: "mcq",
-    difficultyLvl: "easy",
-    jobRoleID: "",
-    nosID: "",
-    metadata: {
-      options: DEFAULT_OPTIONS.map((option) => ({ ...option })),
-      scores: DEFAULT_SCORES.map((score) => ({ ...score })),
-      expected_answer: "",
-    },
-  };
-}
-
-function stripHtml(html: string) {
-  if (!html) {
-    return "";
-  }
-
-  if (typeof window === "undefined") {
-    return html
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  return (container.textContent || container.innerText || "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeQuestionForm(question: Question): QuestionFormValues {
-  const metadata =
-    typeof question.metadata === "string"
-      ? { options: DEFAULT_OPTIONS, scores: DEFAULT_SCORES, expected_answer: "" }
-      : question.metadata || {};
-
-  const jobRoleId = question.nos?.job_role_id ?? question.nos?.JobRoleID ?? "";
-
-  return {
-    text: question.text,
-    type: question.type,
-    difficultyLvl: question.difficultyLvl,
-    jobRoleID: jobRoleId ? String(jobRoleId) : "",
-    nosID: question.nosID ? String(question.nosID) : "",
-    metadata: {
-      options: metadata.options?.length
-        ? metadata.options.map((option) => ({ ...option }))
-        : DEFAULT_OPTIONS.map((option) => ({ ...option })),
-      scores: metadata.scores?.length
-        ? metadata.scores.map((score) => ({ ...score }))
-        : DEFAULT_SCORES.map((score) => ({ ...score })),
-      expected_answer: metadata.expected_answer ?? "",
-    },
-  };
-}
-
-function buildCreatePayload(values: QuestionFormValues) {
-  return {
-    text: values.text.trim(),
-    type: values.type,
-    difficulty_lvl: values.difficultyLvl,
-    nos_id: Number(values.nosID),
-    metadata:
-      values.type === "mcq"
-        ? {
-            options: values.metadata.options
-              .filter((option) => stripHtml(option.text))
-              .map((option) => ({
-                text: option.text.trim(),
-                is_correct: option.is_correct,
-              })),
-          }
-        : {
-            expected_answer: values.metadata.expected_answer.trim(),
-            scores: values.metadata.scores
-              .filter((score) => score.label.trim())
-              .map((score) => ({
-                label: score.label.trim(),
-                percentage: Number(score.percentage),
-              })),
-          },
-  };
-}
-
-function buildUpdatePayload(id: string | number, values: QuestionFormValues) {
-  const createPayload = buildCreatePayload(values);
-  return {
-    id,
-    text: createPayload.text,
-    type: createPayload.type,
-    difficultyLvl: values.difficultyLvl,
-    nos_id: Number(values.nosID),
-    metadata: createPayload.metadata,
-  };
-}
-
-function validateForm(values: QuestionFormValues) {
-  if (!stripHtml(values.text)) {
-    return "Question text is required.";
-  }
-
-  if (!values.jobRoleID) {
-    return "Please select a job role.";
-  }
-
-  if (!values.nosID) {
-    return "Please select a NOS.";
-  }
-
-  if (values.type === "mcq") {
-    const validOptions = values.metadata.options.filter((option) =>
-      stripHtml(option.text)
-    );
-    const correctCount = validOptions.filter(
-      (option) => option.is_correct
-    ).length;
-
-    if (validOptions.length < 2) {
-      return "MCQ questions need at least 2 options.";
-    }
-
-    if (correctCount !== 1) {
-      return "MCQ questions need exactly 1 correct option.";
-    }
-
-    return null;
-  }
-
-  const validScores = values.metadata.scores.filter((score) =>
-    score.label.trim()
-  );
-  if (validScores.length < 2) {
-    return "Rubric questions need at least 2 score rows.";
-  }
-
-  const invalidScore = validScores.find(
-    (score) =>
-      !Number.isFinite(Number(score.percentage)) ||
-      Number(score.percentage) < 0 ||
-      Number(score.percentage) > 100
-  );
-
-  if (invalidScore) {
-    return "Rubric percentages must be between 0 and 100.";
-  }
-
-  return null;
-}
+import {
+  buildCreatePayload,
+  buildUpdatePayload,
+  createEmptyForm,
+  normalizeQuestionForm,
+  stripHtml,
+  validateForm,
+} from "./question-utils";
 
 export default function QuestionsPage() {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -227,11 +69,6 @@ export default function QuestionsPage() {
   const { jobRoles } = useAppSelector((state) => state.jobRoles);
 
   const [panelMode, setPanelMode] = useState<"bulk" | "view">("bulk");
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createForms, setCreateForms] = useState<QuestionFormValues[]>([
-    createEmptyForm(),
-  ]);
-  const [activeCreateIndex, setActiveCreateIndex] = useState(0);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<QuestionFormValues>(
     createEmptyForm()
@@ -322,59 +159,6 @@ export default function QuestionsPage() {
 
   const refreshQuestions = () => {
     dispatch(fetchQuestions({ page: currentPage, limit: 10 }));
-  };
-
-  const activeCreateForm = createForms[activeCreateIndex] || createEmptyForm();
-
-  const updateActiveCreateForm = (nextValue: QuestionFormValues) => {
-    setCreateForms((current) =>
-      current.map((form, index) =>
-        index === activeCreateIndex ? nextValue : form
-      )
-    );
-  };
-
-  const handleOpenCreateModal = () => {
-    setCreateForms([createEmptyForm()]);
-    setActiveCreateIndex(0);
-    setCreateModalOpen(true);
-  };
-
-  const handleCloseCreateModal = () => {
-    setCreateModalOpen(false);
-    setCreateForms([createEmptyForm()]);
-    setActiveCreateIndex(0);
-  };
-
-  const handleAddMoreQuestion = () => {
-    setCreateForms((current) => [...current, createEmptyForm()]);
-    setActiveCreateIndex(createForms.length);
-  };
-
-  const handleCreateQuestion = async (event: FormEvent) => {
-    event.preventDefault();
-    for (let index = 0; index < createForms.length; index += 1) {
-      const validationMessage = validateForm(createForms[index]);
-      if (validationMessage) {
-        setActiveCreateIndex(index);
-        toast.error(`Question ${index + 1}: ${validationMessage}`);
-        return;
-      }
-    }
-
-    const resultAction = await dispatch(
-      createQuestions(createForms.map(buildCreatePayload))
-    );
-
-    if (createQuestions.fulfilled.match(resultAction)) {
-      toast.success(
-        `${createForms.length} question${
-          createForms.length > 1 ? "s" : ""
-        } created successfully.`
-      );
-      handleCloseCreateModal();
-      refreshQuestions();
-    }
   };
 
   const handleViewQuestion = (id: string | number) => {
@@ -732,12 +516,8 @@ export default function QuestionsPage() {
           <div className="glass-panel rounded-[2rem] border border-white/80 p-2 shadow-soft shadow-slate-900/5">
             <div className="grid grid-cols-3 gap-2">
               <button
-                onClick={handleOpenCreateModal}
-                className={`rounded-[1.25rem] px-4 py-3 text-sm font-semibold transition ${
-                  createModalOpen
-                    ? "bg-slate-950 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
+                onClick={() => router.push("/questions/create")}
+                className="rounded-[1.25rem] px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
               >
                 Add
               </button>
@@ -1139,46 +919,6 @@ export default function QuestionsPage() {
           </div>
         </div>
       </div>
-
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 transition-all duration-200 will-change-[opacity]">
-          <div className="h-[90vh] w-full max-w-5xl flex flex-col rounded-[2rem] overflow-hidden relative shadow-2xl transform translate-z-0 will-change-[transform,opacity]">
-            <QuestionForm
-              title="Create Questions"
-              description="Draft one or more MCQ or rubric questions in this modal, then save them together in a single request."
-              jobRoles={jobRoles}
-              value={activeCreateForm}
-              onChange={updateActiveCreateForm}
-              onSubmit={handleCreateQuestion}
-              submitLabel={`Save ${createForms.length} Question${
-                createForms.length > 1 ? "s" : ""
-              }`}
-              submitting={creating}
-              allowBatchActions
-              batchPositionLabel={`Question ${activeCreateIndex + 1} of ${
-                createForms.length
-              }`}
-              onAddMore={handleAddMoreQuestion}
-              onPrevious={() =>
-                setActiveCreateIndex((current) => Math.max(0, current - 1))
-              }
-              onNext={() =>
-                setActiveCreateIndex((current) =>
-                  Math.min(createForms.length - 1, current + 1)
-                )
-              }
-              hasPrevious={activeCreateIndex > 0}
-              hasNext={activeCreateIndex < createForms.length - 1}
-            />
-            <button
-              onClick={handleCloseCreateModal}
-              className="fixed right-8 top-8 rounded-full bg-white p-3 text-slate-500 shadow-lg transition hover:text-slate-950"
-            >
-              <FiX className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {editModalOpen && questionToEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 transition-all duration-200 will-change-[opacity]">

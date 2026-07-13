@@ -46,6 +46,32 @@ type ReportShape = {
 const TEST_TYPES = ["theory", "practical", "viva"] as const;
 type TestType = (typeof TEST_TYPES)[number];
 
+// Light colour per test type so theory / practical / viva groups are easy to
+// tell apart at a glance.
+const TYPE_TINT: Record<
+  TestType,
+  { header: string; subHeader: string; cell: string; divide: string }
+> = {
+  theory: {
+    header: "bg-blue-100/70 text-blue-700",
+    subHeader: "bg-blue-50 text-blue-600",
+    cell: "bg-blue-50/40",
+    divide: "border-blue-200",
+  },
+  practical: {
+    header: "bg-emerald-100/70 text-emerald-700",
+    subHeader: "bg-emerald-50 text-emerald-600",
+    cell: "bg-emerald-50/40",
+    divide: "border-emerald-200",
+  },
+  viva: {
+    header: "bg-amber-100/70 text-amber-700",
+    subHeader: "bg-amber-50 text-amber-600",
+    cell: "bg-amber-50/40",
+    divide: "border-amber-200",
+  },
+};
+
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -323,7 +349,7 @@ export default function ReportsPage() {
                         <th
                           key={type}
                           colSpan={1 + (header[type]?.length ?? 0)}
-                          className="whitespace-nowrap border-l border-slate-150 px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-slate-600"
+                          className={`whitespace-nowrap border-l-2 border-slate-300 px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider ${TYPE_TINT[type].header}`}
                         >
                           {titleCase(type)}
                         </th>
@@ -333,18 +359,20 @@ export default function ReportsPage() {
                     <tr>
                       {activeTypes.map((type) => (
                         <FragmentCols key={type}>
-                          <th className="whitespace-nowrap border-l border-slate-150 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <th
+                            className={`whitespace-nowrap border-l-2 border-slate-300 px-5 py-2.5 text-[10px] font-bold uppercase tracking-wider ${TYPE_TINT[type].subHeader}`}
+                          >
                             Status
                           </th>
                           {(header[type] || []).map((nos) => (
                             <th
                               key={`${type}-${nos.code}`}
-                              className="whitespace-nowrap px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                              className={`whitespace-nowrap border-l px-5 py-2.5 text-center text-[10px] font-bold uppercase tracking-wider ${TYPE_TINT[type].divide} ${TYPE_TINT[type].subHeader}`}
                               title={nos.name}
                             >
                               {nos.code}
                               {nos.marks ? (
-                                <span className="block text-[9px] font-semibold normal-case tracking-normal text-slate-400">
+                                <span className="block text-[9px] font-semibold normal-case tracking-normal opacity-70">
                                   / {nos.marks}
                                 </span>
                               ) : null}
@@ -380,7 +408,7 @@ export default function ReportsPage() {
                               <td
                                 key={type}
                                 colSpan={1 + nosCount}
-                                className="border-l border-slate-100 px-5 py-3 text-center"
+                                className={`border-l-2 border-slate-300 px-5 py-3 text-center ${TYPE_TINT[type].cell}`}
                               >
                                 <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700">
                                   Absent
@@ -391,13 +419,15 @@ export default function ReportsPage() {
 
                           return (
                             <FragmentCols key={type}>
-                              <td className="whitespace-nowrap border-l border-slate-100 px-5 py-3 text-xs">
+                              <td
+                                className={`whitespace-nowrap border-l-2 border-slate-300 px-5 py-3 text-xs ${TYPE_TINT[type].cell}`}
+                              >
                                 <StatusBadge value={status} />
                               </td>
                               {(header[type] || []).map((nos) => (
                                 <td
                                   key={`${type}-${nos.code}`}
-                                  className="whitespace-nowrap px-5 py-3 text-center text-xs font-semibold text-slate-700"
+                                  className={`whitespace-nowrap border-l px-5 py-3 text-center text-xs font-semibold text-slate-700 ${TYPE_TINT[type].divide} ${TYPE_TINT[type].cell}`}
                                 >
                                   {getNosMark(row, type, nos.code)}
                                 </td>

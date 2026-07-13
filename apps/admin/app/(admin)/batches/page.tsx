@@ -2,8 +2,10 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import BatchForm from "./BatchForm";
 import {
   FiDownload,
   FiEdit2,
@@ -80,6 +82,29 @@ type PcForm = {
   correct_mark: string;
   negative_mark: string;
 };
+
+const ATTENDANCE_TEST_TYPES = [
+  {
+    value: "theory",
+    label: "Theory",
+    testKey: "theory_test",
+    idKey: "theory_test_id",
+  },
+  {
+    value: "practical",
+    label: "Practical",
+    testKey: "practical_test",
+    idKey: "practical_test_id",
+  },
+  { value: "viva", label: "Viva", testKey: "viva_test", idKey: "viva_test_id" },
+] as const;
+
+function getAttendanceTestOptions(batch: any) {
+  if (!batch) return [];
+  return ATTENDANCE_TEST_TYPES.filter(
+    (type) => Boolean(batch[type.testKey]) || Boolean(batch[type.idKey])
+  );
+}
 
 type NosForm = {
   topic_id: string;
@@ -397,6 +422,7 @@ function buildPayload(form: BatchFormState): BatchCreateRequest | null {
 
 export default function BatchesPage() {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const {
     batches,
     totalBatches,
@@ -489,6 +515,10 @@ export default function BatchesPage() {
   const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
   const [batchToPublish, setBatchToPublish] = useState<Batch | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const attendanceTestOptions = useMemo(
+    () => getAttendanceTestOptions(selectedBatch),
+    [selectedBatch]
+  );
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 10 }));
@@ -510,6 +540,15 @@ export default function BatchesPage() {
 
     dispatch(clearSelectedJobRole());
   }, [dispatch, form.job_role_id, modalMode, bulkJobRoleId, bulkOpen]);
+
+  useEffect(() => {
+    if (
+      attendanceTestOptions.length > 0 &&
+      !attendanceTestOptions.some((type) => type.value === attendanceTestType)
+    ) {
+      setAttendanceTestType(attendanceTestOptions[0].value);
+    }
+  }, [attendanceTestOptions, attendanceTestType]);
 
   const filteredJobRoles = useMemo(
     () =>
@@ -682,7 +721,6 @@ export default function BatchesPage() {
         }
       });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.sections, modalMode, selectedNosList]);
 
   const refreshBatches = () => {
@@ -765,19 +803,10 @@ export default function BatchesPage() {
     }
   };
   const openCreateModal = () => {
-    setForm(createEmptyForm());
-    setBatchToEdit(null);
-    setModalMode("create");
+    router.push("/batches/create");
   };
 
   const openEditModal = (batch: Batch) => {
-    const jobRole = jobRoles.find(
-      (item) => String(item.id) === String(batch.job_role_id)
-    );
-    setForm({
-      ...normalizeBatchToForm(batch),
-      sector_id: String(jobRole?.sector_id || ""),
-    });
     setBatchToEdit(batch);
     setModalMode("edit");
   };
@@ -982,9 +1011,7 @@ export default function BatchesPage() {
     if (candidateSelectedIds.size === batchCandidates.length) {
       setCandidateSelectedIds(new Set());
     } else {
-      setCandidateSelectedIds(
-        new Set(batchCandidates.map((cand) => cand.id!))
-      );
+      setCandidateSelectedIds(new Set(batchCandidates.map((cand) => cand.id!)));
     }
   };
 
@@ -1023,6 +1050,10 @@ export default function BatchesPage() {
 
   const handleMarkAttendance = async () => {
     if (!selectedBatch || candidateSelectedIds.size === 0) return;
+    if (attendanceTestOptions.length === 0) {
+      toast.error("No test is available for attendance in this batch.");
+      return;
+    }
     setIsMarkingAttendance(true);
     try {
       const res = await api.post(
@@ -1366,7 +1397,7 @@ export default function BatchesPage() {
                               </button>
                             </Tooltip>
                           )}
-                          <Tooltip label="Delete Batch">
+                          {/* <Tooltip label="Delete Batch">
                             <button
                               onClick={() => setBatchToDelete(batch)}
                               disabled={deleting}
@@ -1374,7 +1405,7 @@ export default function BatchesPage() {
                             >
                               <FiTrash2 className="h-4.5 w-4.5" />
                             </button>
-                          </Tooltip>
+                          </Tooltip> */}
                         </div>
                       </td>
                     </tr>
@@ -1521,905 +1552,17 @@ export default function BatchesPage() {
           </div>
         </div>
       )}
-      {modalMode && (
+      {modalMode === "edit" && batchToEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
-          <form
-            onSubmit={handleSubmit}
-            className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-7 py-5">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-950">
-                  {modalMode === "edit" ? "Edit Batch" : "Create Batch"}
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Select sector and job role, then fill section, NOS and PC
-                  details.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeFormModal}
-                className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
-              >
-                <FiX className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto px-7 py-6">
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label="Batch Name">
-                  <input
-                    value={form.name}
-                    onChange={(event) =>
-                      setFormField("name", event.target.value)
-                    }
-                    className={INPUT_CLASS}
-                    placeholder="React Batch 1"
-                  />
-                </Field>
-                <Field label="Sector">
-                  <select
-                    value={form.sector_id}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        sector_id: event.target.value,
-                        job_role_id: "",
-                      }))
-                    }
-                    className={INPUT_CLASS}
-                  >
-                    <option value="">Select sector</option>
-                    {sectors.map((sector) => (
-                      <option key={sector.id} value={sector.id}>
-                        {sector.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Job Role">
-                  <select
-                    value={form.job_role_id}
-                    onChange={(event) =>
-                      setFormField("job_role_id", event.target.value)
-                    }
-                    className={INPUT_CLASS}
-                    disabled={!form.sector_id}
-                  >
-                    <option value="">Select job role</option>
-                    {filteredJobRoles.map((jobRole) => (
-                      <option key={jobRole.id} value={jobRole.id}>
-                        {jobRole.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              {/* Authorization toggles */}
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Authorization Required
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  {(
-                    [
-                      {
-                        key: "is_authorization_required_in_theory" as const,
-                        label: "Theory",
-                        marksKey: null,
-                      },
-                      {
-                        key: "is_authorization_required_in_practical" as const,
-                        label: "Practical",
-                        marksKey: "total_practical_marks" as const,
-                      },
-                      {
-                        key: "is_authorization_required_in_viva" as const,
-                        label: "Viva",
-                        marksKey: "total_viva_marks" as const,
-                      },
-                    ] as const
-                  )
-                    .filter(
-                      ({ marksKey }) =>
-                        marksKey === null ||
-                        Number(selectedJobRole?.[marksKey]) > 0 ||
-                        (modalMode === "edit" &&
-                          form[
-                            marksKey === "total_practical_marks"
-                              ? "is_authorization_required_in_practical"
-                              : "is_authorization_required_in_viva"
-                          ])
-                    )
-                    .map(({ key, label }) => (
-                      <label
-                        key={key}
-                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={form[key]}
-                          onClick={() => setFormField(key, !form[key])}
-                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                            form[key] ? "bg-slate-950" : "bg-slate-200"
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                              form[key] ? "translate-x-4" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                        <span className="text-sm font-semibold text-slate-700">
-                          {label}
-                        </span>
-                      </label>
-                    ))}
-                </div>
-              </div>
-
-              {/* Onboarding Selfie toggles */}
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Onboarding Selfie Required
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  {(
-                    [
-                      {
-                        key: "is_onboarding_selfie_required_theory" as const,
-                        label: "Theory",
-                        marksKey: null,
-                      },
-                      {
-                        key: "is_onboarding_selfie_required_practical" as const,
-                        label: "Practical",
-                        marksKey: "total_practical_marks" as const,
-                      },
-                      {
-                        key: "is_onboarding_selfie_required_viva" as const,
-                        label: "Viva",
-                        marksKey: "total_viva_marks" as const,
-                      },
-                    ] as const
-                  )
-                    .filter(
-                      ({ marksKey }) =>
-                        marksKey === null ||
-                        Number(selectedJobRole?.[marksKey]) > 0 ||
-                        (modalMode === "edit" &&
-                          form[
-                            marksKey === "total_practical_marks"
-                              ? "is_onboarding_selfie_required_practical"
-                              : "is_onboarding_selfie_required_viva"
-                          ])
-                    )
-                    .map(({ key, label }) => (
-                      <label
-                        key={key}
-                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={form[key]}
-                          onClick={() => setFormField(key, !form[key])}
-                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                            form[key] ? "bg-slate-950" : "bg-slate-200"
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                              form[key] ? "translate-x-4" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                        <span className="text-sm font-semibold text-slate-700">
-                          {label}
-                        </span>
-                      </label>
-                    ))}
-                </div>
-              </div>
-
-              {/* Random Evidence toggles */}
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Random Evidence Required
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  {(
-                    [
-                      {
-                        key: "is_random_evidence_required_theory" as const,
-                        label: "Theory",
-                        marksKey: null,
-                      },
-                      {
-                        key: "is_random_evidence_required_practical" as const,
-                        label: "Practical",
-                        marksKey: "total_practical_marks" as const,
-                      },
-                      {
-                        key: "is_random_evidence_required_viva" as const,
-                        label: "Viva",
-                        marksKey: "total_viva_marks" as const,
-                      },
-                    ] as const
-                  )
-                    .filter(
-                      ({ marksKey }) =>
-                        marksKey === null ||
-                        Number(selectedJobRole?.[marksKey]) > 0 ||
-                        (modalMode === "edit" &&
-                          form[
-                            marksKey === "total_practical_marks"
-                              ? "is_random_evidence_required_practical"
-                              : "is_random_evidence_required_viva"
-                          ])
-                    )
-                    .map(({ key, label }) => (
-                      <label
-                        key={key}
-                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-slate-300 hover:bg-slate-50"
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={form[key]}
-                          onClick={() => setFormField(key, !form[key])}
-                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${
-                            form[key] ? "bg-slate-950" : "bg-slate-200"
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                              form[key] ? "translate-x-4" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                        <span className="text-sm font-semibold text-slate-700">
-                          {label}
-                        </span>
-                      </label>
-                    ))}
-                </div>
-              </div>
-
-              {/* Time fields */}
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-5 py-4">
-                <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Time (minutes)
-                </p>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Field label="Theory Time">
-                    <input
-                      type="number"
-                      min={0}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      value={form.theory_time ?? 0}
-                      onChange={(e) =>
-                        setFormField(
-                          "theory_time",
-                          Math.max(0, Number(e.target.value))
-                        )
-                      }
-                      className={INPUT_CLASS}
-                      placeholder="0"
-                    />
-                  </Field>
-                  {(Number(selectedJobRole?.total_practical_marks) > 0 ||
-                    (modalMode === "edit" &&
-                      (form.practical_time ?? 0) > 0)) && (
-                    <Field label="Practical Time">
-                      <input
-                        type="number"
-                        min={0}
-                        onWheel={(e) => e.currentTarget.blur()}
-                        value={form.practical_time ?? 0}
-                        onChange={(e) =>
-                          setFormField(
-                            "practical_time",
-                            Math.max(0, Number(e.target.value))
-                          )
-                        }
-                        className={INPUT_CLASS}
-                        placeholder="0"
-                      />
-                    </Field>
-                  )}
-                  {(Number(selectedJobRole?.total_viva_marks) > 0 ||
-                    (modalMode === "edit" && (form.viva_time ?? 0) > 0)) && (
-                    <Field label="Viva Time">
-                      <input
-                        type="number"
-                        min={0}
-                        onWheel={(e) => e.currentTarget.blur()}
-                        value={form.viva_time ?? 0}
-                        onChange={(e) =>
-                          setFormField(
-                            "viva_time",
-                            Math.max(0, Number(e.target.value))
-                          )
-                        }
-                        className={INPUT_CLASS}
-                        placeholder="0"
-                      />
-                    </Field>
-                  )}
-                </div>
-              </div>
-
-              {form.job_role_id && (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  {jobRoleDetailLoading ? (
-                    "Loading NOS and PC details for selected job role..."
-                  ) : selectedJobRole ? (
-                    <div className="flex flex-wrap items-center gap-4">
-                      <span>{selectedNosList.length} NOS available</span>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
-                        Theory:{" "}
-                        {Number(selectedJobRole.total_theory_marks) || 0}
-                      </span>
-                      {Number(selectedJobRole.total_practical_marks) > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                          Practical:{" "}
-                          {Number(selectedJobRole.total_practical_marks)}
-                        </span>
-                      )}
-                      {Number(selectedJobRole.total_viva_marks) > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                          Viva: {Number(selectedJobRole.total_viva_marks)}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    `Select a job role to load NOS details.`
-                  )}
-                </div>
-              )}
-
-              <div className="mt-6 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Test Structure
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    NOS and PCs are loaded automatically from the selected job
-                    role. Just set the question count, difficulty, type, and
-                    marks.
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <select
-                    value={newSectionType}
-                    onChange={(event) =>
-                      setNewSectionType(event.target.value as BatchSectionType)
-                    }
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 outline-none transition focus:border-slate-400"
-                  >
-                    {SECTION_TYPES.filter((type) => {
-                      if (type === "practical")
-                        return (
-                          Number(selectedJobRole?.total_practical_marks) > 0 ||
-                          modalMode === "edit"
-                        );
-                      if (type === "viva")
-                        return (
-                          Number(selectedJobRole?.total_viva_marks) > 0 ||
-                          modalMode === "edit"
-                        );
-                      return true;
-                    }).map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm((current) => ({
-                        ...current,
-                        sections: [
-                          {
-                            name: `${newSectionType
-                              .charAt(0)
-                              .toUpperCase()}${newSectionType.slice(
-                              1
-                            )} Section`,
-                            type: newSectionType,
-                            nos_list: buildSectionNosList(newSectionType),
-                          },
-                          ...current.sections,
-                        ],
-                      }))
-                    }
-                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Add Section
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-3 space-y-5">
-                {form.sections
-                  .filter((section) => {
-                    if (section.type === "practical")
-                      return (
-                        Number(selectedJobRole?.total_practical_marks) > 0 ||
-                        modalMode === "edit"
-                      );
-                    if (section.type === "viva")
-                      return (
-                        Number(selectedJobRole?.total_viva_marks) > 0 ||
-                        modalMode === "edit"
-                      );
-                    return true;
-                  })
-                  .map((section) => {
-                    const sectionIndex = form.sections.indexOf(section);
-                    return (
-                      <div
-                        key={`${section.type}-${sectionIndex}`}
-                        className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5"
-                      >
-                        <div className="flex flex-wrap items-center gap-3">
-                          <input
-                            value={section.name}
-                            onChange={(event) =>
-                              updateSection(sectionIndex, {
-                                ...section,
-                                name: event.target.value,
-                              })
-                            }
-                            className="min-w-[200px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400"
-                          />
-                          <select
-                            value={section.type}
-                            onChange={(event) =>
-                              updateSection(sectionIndex, {
-                                ...section,
-                                type: event.target.value as BatchSectionType,
-                              })
-                            }
-                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 outline-none transition focus:border-slate-400"
-                          >
-                            {SECTION_TYPES.filter((type) => {
-                              if (type === "practical")
-                                return (
-                                  Number(
-                                    selectedJobRole?.total_practical_marks
-                                  ) > 0 || modalMode === "edit"
-                                );
-                              if (type === "viva")
-                                return (
-                                  Number(selectedJobRole?.total_viva_marks) >
-                                    0 || modalMode === "edit"
-                                );
-                              return true;
-                            }).map((type) => (
-                              <option key={type} value={type}>
-                                {type}
-                              </option>
-                            ))}
-                          </select>
-                          <span className="text-[11px] font-medium text-slate-400">
-                            {section.nos_list.length} NOS
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeSection(sectionIndex)}
-                            disabled={form.sections.length <= 1}
-                            title="Remove section"
-                            className="ml-auto shrink-0 rounded-xl border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <FiTrash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-
-                        <div className="mt-4 space-y-4">
-                          {section.nos_list.map((nos, nosIndex) => (
-                            <div
-                              key={`${sectionIndex}-${nosIndex}`}
-                              className="rounded-2xl border border-white bg-white p-4 shadow-sm"
-                            >
-                              <div className="mb-3 flex items-center justify-between gap-3">
-                                <div className="flex flex-1 items-center gap-3">
-                                  <select
-                                    value={nos.nos_code}
-                                    onChange={(event) =>
-                                      handleNosCodeChange(
-                                        sectionIndex,
-                                        nosIndex,
-                                        event.target.value
-                                      )
-                                    }
-                                    className="max-w-[240px] shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-slate-400"
-                                  >
-                                    <option value="">Select NOS</option>
-                                    {selectedNosList
-                                      .filter((jobRoleNos) =>
-                                        nosMatchesSectionType(
-                                          jobRoleNos,
-                                          section.type
-                                        )
-                                      )
-                                      .map((jobRoleNos) => {
-                                        const code = getNosCode(jobRoleNos);
-                                        return (
-                                          <option key={code} value={code}>
-                                            {code}
-                                            {jobRoleNos.name
-                                              ? ` — ${jobRoleNos.name}`
-                                              : ""}
-                                          </option>
-                                        );
-                                      })}
-                                  </select>
-                                  {nos.nos_code &&
-                                    (() => {
-                                      const matchedNos = selectedNosList.find(
-                                        (jobRoleNos) =>
-                                          getNosCode(jobRoleNos) ===
-                                          nos.nos_code
-                                      );
-                                      if (!matchedNos) return null;
-                                      const mark =
-                                        section.type === "practical"
-                                          ? matchedNos.total_practical_marks
-                                          : section.type === "viva"
-                                          ? matchedNos.total_viva_marks
-                                          : matchedNos.total_theory_marks;
-                                      const label =
-                                        section.type === "practical"
-                                          ? "P"
-                                          : section.type === "viva"
-                                          ? "V"
-                                          : "T";
-                                      const total = Number(mark) || 0;
-                                      // Marks already allocated to this NOS
-                                      // across every section of this test type
-                                      // (each row uses correct_mark × questions).
-                                      const consumed = form.sections.reduce(
-                                        (sum, sec) => {
-                                          if (sec.type !== section.type)
-                                            return sum;
-                                          return (
-                                            sum +
-                                            sec.nos_list.reduce(
-                                              (rowSum, rowNos) =>
-                                                rowNos.nos_code === nos.nos_code
-                                                  ? rowSum +
-                                                    (Number(
-                                                      rowNos.correct_mark
-                                                    ) || 0) *
-                                                      (Number(
-                                                        rowNos.question_count
-                                                      ) || 0)
-                                                  : rowSum,
-                                              0
-                                            )
-                                          );
-                                        },
-                                        0
-                                      );
-                                      const remaining = total - consumed;
-                                      const over = remaining < 0;
-                                      const badgeClass = over
-                                        ? "bg-red-50 text-red-600"
-                                        : section.type === "practical"
-                                        ? "bg-emerald-50 text-emerald-600"
-                                        : section.type === "viva"
-                                        ? "bg-amber-50 text-amber-600"
-                                        : "bg-blue-50 text-blue-600";
-                                      return (
-                                        <span
-                                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${badgeClass}`}
-                                          title={`${consumed} of ${total} marks allocated`}
-                                        >
-                                          {label}: {remaining}/{total} left
-                                        </span>
-                                      );
-                                    })()}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeNos(sectionIndex, nosIndex)
-                                  }
-                                  title="Remove NOS"
-                                  className="shrink-0 rounded-lg border border-red-100 bg-white p-2 text-red-600 transition hover:bg-red-50"
-                                >
-                                  <FiTrash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-
-                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                                <Field label="Difficulty">
-                                  <select
-                                    value={nos.difficulty_lvl}
-                                    onChange={(event) =>
-                                      updateNos(sectionIndex, nosIndex, {
-                                        ...nos,
-                                        difficulty_lvl: event.target
-                                          .value as BatchDifficultyLevel,
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                  >
-                                    {DIFFICULTIES.map((value) => (
-                                      <option key={value} value={value}>
-                                        {value}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </Field>
-                                <Field label="Question Type">
-                                  <select
-                                    value={nos.question_type}
-                                    onChange={(event) =>
-                                      updateNos(sectionIndex, nosIndex, {
-                                        ...nos,
-                                        question_type: event.target
-                                          .value as BatchQuestionType,
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                  >
-                                    {QUESTION_TYPES.map((value) => (
-                                      <option key={value} value={value}>
-                                        {value}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </Field>
-                                <Field label="Questions">
-                                  <input
-                                    type="number"
-                                    value={nos.question_count}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                    onChange={(event) =>
-                                      updateNos(sectionIndex, nosIndex, {
-                                        ...nos,
-                                        question_count: event.target.value,
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                  />
-                                  {(() => {
-                                    const nosId = getNosIdForCode(nos.nos_code);
-                                    if (!nosId) return null;
-                                    const count =
-                                      nosQuestionCounts[
-                                        nosCountKey(
-                                          nosId,
-                                          nos.difficulty_lvl,
-                                          nos.question_type
-                                        )
-                                      ];
-                                    const exceeds =
-                                      count !== undefined &&
-                                      Number(nos.question_count) > count;
-                                    return (
-                                      <span
-                                        className={`mt-1 block text-[11px] font-medium ${
-                                          exceeds
-                                            ? "text-red-500"
-                                            : "text-slate-400"
-                                        }`}
-                                      >
-                                        {count === undefined
-                                          ? "Checking availability…"
-                                          : `${count} question${
-                                              count === 1 ? "" : "s"
-                                            } available`}
-                                        {exceeds ? " — exceeds available" : ""}
-                                      </span>
-                                    );
-                                  })()}
-                                </Field>
-                                <Field label="Correct Mark">
-                                  <input
-                                    type="number"
-                                    value={nos.correct_mark}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                    onChange={(event) =>
-                                      updateNos(sectionIndex, nosIndex, {
-                                        ...nos,
-                                        correct_mark: event.target.value,
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                  />
-                                </Field>
-                                <Field label="Negative Mark">
-                                  <input
-                                    type="number"
-                                    value={nos.negative_mark}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                    onChange={(event) =>
-                                      updateNos(sectionIndex, nosIndex, {
-                                        ...nos,
-                                        negative_mark: event.target.value,
-                                      })
-                                    }
-                                    className={INPUT_CLASS}
-                                  />
-                                </Field>
-                              </div>
-
-                              {nos.pc_list.length > 0 && (
-                                <div className="mt-3 rounded-xl bg-slate-50 p-3">
-                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-                                    Performance Criteria ({nos.pc_list.length})
-                                  </p>
-                                  <div className="space-y-2">
-                                    {nos.pc_list.map((pc, pcIndex) => (
-                                      <div
-                                        key={`${sectionIndex}-${nosIndex}-${pcIndex}`}
-                                        className="rounded-lg border border-slate-100 bg-white p-2.5"
-                                      >
-                                        <p className="mb-2 text-[11px] font-semibold text-slate-600">
-                                          {pc.pc_code || `PC ${pcIndex + 1}`}
-                                        </p>
-                                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                                          <input
-                                            type="number"
-                                            value={pc.question_count}
-                                            onWheel={(e) =>
-                                              e.currentTarget.blur()
-                                            }
-                                            onChange={(event) =>
-                                              updatePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex,
-                                                {
-                                                  ...pc,
-                                                  question_count:
-                                                    event.target.value,
-                                                }
-                                              )
-                                            }
-                                            className={INPUT_CLASS}
-                                            placeholder="Questions"
-                                          />
-                                          <select
-                                            value={pc.difficulty_lvl}
-                                            onChange={(event) =>
-                                              updatePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex,
-                                                {
-                                                  ...pc,
-                                                  difficulty_lvl: event.target
-                                                    .value as BatchDifficultyLevel,
-                                                }
-                                              )
-                                            }
-                                            className={INPUT_CLASS}
-                                          >
-                                            {DIFFICULTIES.map((value) => (
-                                              <option key={value} value={value}>
-                                                {value}
-                                              </option>
-                                            ))}
-                                          </select>
-                                          <select
-                                            value={pc.question_type}
-                                            onChange={(event) =>
-                                              updatePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex,
-                                                {
-                                                  ...pc,
-                                                  question_type: event.target
-                                                    .value as BatchQuestionType,
-                                                }
-                                              )
-                                            }
-                                            className={INPUT_CLASS}
-                                          >
-                                            {QUESTION_TYPES.map((value) => (
-                                              <option key={value} value={value}>
-                                                {value}
-                                              </option>
-                                            ))}
-                                          </select>
-                                          <input
-                                            type="number"
-                                            value={pc.correct_mark}
-                                            onWheel={(e) =>
-                                              e.currentTarget.blur()
-                                            }
-                                            onChange={(event) =>
-                                              updatePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex,
-                                                {
-                                                  ...pc,
-                                                  correct_mark:
-                                                    event.target.value,
-                                                }
-                                              )
-                                            }
-                                            className={INPUT_CLASS}
-                                            placeholder="Correct"
-                                          />
-                                          <input
-                                            type="number"
-                                            value={pc.negative_mark}
-                                            onWheel={(e) =>
-                                              e.currentTarget.blur()
-                                            }
-                                            onChange={(event) =>
-                                              updatePc(
-                                                sectionIndex,
-                                                nosIndex,
-                                                pcIndex,
-                                                {
-                                                  ...pc,
-                                                  negative_mark:
-                                                    event.target.value,
-                                                }
-                                              )
-                                            }
-                                            className={INPUT_CLASS}
-                                            placeholder="Negative"
-                                          />
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => addNos(sectionIndex)}
-                          title="Add NOS"
-                          className="mt-3 inline-flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-2 text-slate-600 transition hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          <FiPlus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-slate-100 px-7 py-5">
-              <button
-                type="button"
-                onClick={closeFormModal}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={creating || updating}
-                className="rounded-xl bg-slate-950 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {modalMode === "edit"
-                  ? updating
-                    ? "Updating..."
-                    : "Update Batch"
-                  : creating
-                  ? "Creating..."
-                  : "Create Batch"}
-              </button>
-            </div>
-          </form>
+          <BatchForm
+            mode="edit"
+            batch={batchToEdit}
+            onSuccess={() => {
+              closeFormModal();
+              refreshBatches();
+            }}
+            onCancel={closeFormModal}
+          />
         </div>
       )}
 
@@ -2922,9 +2065,14 @@ export default function BatchesPage() {
                                   <div className="flex items-center gap-2">
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        setShowAttendanceModal(true)
-                                      }
+                                      onClick={() => {
+                                        if (attendanceTestOptions[0]) {
+                                          setAttendanceTestType(
+                                            attendanceTestOptions[0].value
+                                          );
+                                        }
+                                        setShowAttendanceModal(true);
+                                      }}
                                       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                                     >
                                       <FiUserCheck className="h-3.5 w-3.5" />
@@ -3356,6 +2504,7 @@ export default function BatchesPage() {
               </label>
               <select
                 value={attendanceTestType}
+                disabled={attendanceTestOptions.length === 0}
                 onChange={(e) =>
                   setAttendanceTestType(
                     e.target.value as "theory" | "practical" | "viva"
@@ -3363,9 +2512,15 @@ export default function BatchesPage() {
                 }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
               >
-                <option value="theory">Theory</option>
-                <option value="practical">Practical</option>
-                <option value="viva">Viva</option>
+                {attendanceTestOptions.length > 0 ? (
+                  attendanceTestOptions.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value={attendanceTestType}>No tests available</option>
+                )}
               </select>
             </div>
 
@@ -3382,7 +2537,9 @@ export default function BatchesPage() {
                 type="button"
                 onClick={handleMarkAttendance}
                 className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50"
-                disabled={isMarkingAttendance}
+                disabled={
+                  isMarkingAttendance || attendanceTestOptions.length === 0
+                }
               >
                 {isMarkingAttendance ? "Marking…" : "Confirm Attendance"}
               </button>

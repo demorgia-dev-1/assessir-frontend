@@ -56,17 +56,24 @@ interface TestInfo {
   isRandomEvidenceRequired?: boolean;
 }
 
+type TestType = "theory" | "practical" | "viva";
+
+type BatchInfo = Partial<Record<`${TestType}_test`, unknown>>;
+
+const TEST_SEQUENCE: { type: TestType; label: string; key: `${TestType}_test` }[] = [
+  { type: "theory", label: "Theory", key: "theory_test" },
+  { type: "practical", label: "Practical", key: "practical_test" },
+  { type: "viva", label: "Viva", key: "viva_test" },
+];
+
 function ExamTestInner() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const batchId = params.batchId as string;
-  const testType = (searchParams.get("type") || "theory") as
-    | "theory"
-    | "practical"
-    | "viva";
+  const testType = (searchParams.get("type") || "theory") as TestType;
 
-  const { isAuthenticated, isInitialized } = useAppSelector(
+  const { batch: authBatch, isAuthenticated, isInitialized } = useAppSelector(
     (state) => state.auth
   );
 
@@ -225,26 +232,14 @@ function ExamTestInner() {
     stream: aiStream,
   } = useAiProctoring(aiEnabled);
 
-  // Live self-view so the candidate can see the proctoring camera is active.
-  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    const video = previewVideoRef.current;
-    if (video && aiStream) {
-      video.srcObject = aiStream;
-      video.play().catch(() => {});
-    }
-  }, [aiStream]);
-
-  // ── Random evidence capture (photo snapshots + video chunks) ──────────
-  // Reuses the proctoring camera stream and uploads to the backend.
+  // ── Random evidence capture (video chunks only) ──────────
+  // Reuses the proctoring camera stream and uploads video evidence to the backend.
   const evidenceRequired = !!testInfo?.isRandomEvidenceRequired;
-  const evidenceVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
-  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const uploadEvidence = useCallback(
-    async (blob: Blob, fileName: string, evType: "image" | "video") => {
+    async (blob: Blob, fileName: string, evType: "video") => {
       try {
         // 1. Ask the API for a presigned S3 URL for this file.
         const res = await api.post(
@@ -270,37 +265,6 @@ function ExamTestInner() {
     },
     [batchId]
   );
-
-  const captureEvidenceImage = useCallback(() => {
-    const video = evidenceVideoRef.current;
-    if (!video || video.readyState < 2) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const loc = locationRef.current;
-    const ts = new Date().toISOString();
-    const overlayText = loc
-      ? `Lat: ${loc.lat.toFixed(6)} | Lng: ${loc.lng.toFixed(6)} | ${ts}`
-      : `Location: N/A | ${ts}`;
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(0, canvas.height - 32, canvas.width, 32);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 14px monospace";
-    ctx.fillText(overlayText, 8, canvas.height - 10);
-
-    canvas.toBlob(
-      (blob) => {
-        if (blob) uploadEvidence(blob, `${Date.now()}.jpg`, "image");
-      },
-      "image/jpeg",
-      0.8
-    );
-  }, [uploadEvidence]);
 
   const stopCurrentVideoRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
@@ -339,56 +303,6 @@ function ExamTestInner() {
     }
   }, [aiStream, uploadEvidence]);
 
-  // Bind an offscreen video to the proctoring stream + watch geolocation.
-  useEffect(() => {
-    if (!evidenceRequired || !aiStream) return;
-
-    const video = document.createElement("video");
-    video.autoplay = true;
-    video.playsInline = true;
-    video.muted = true;
-    video.style.position = "fixed";
-    video.style.top = "-9999px";
-    video.style.width = "1px";
-    video.style.height = "1px";
-    document.body.appendChild(video);
-    video.srcObject = aiStream;
-    video.play().catch(() => {});
-    evidenceVideoRef.current = video;
-
-    let watchId: number | undefined;
-    if (navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          locationRef.current = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          };
-        },
-        () => {},
-        { enableHighAccuracy: true }
-      );
-    }
-
-    return () => {
-      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
-      video.srcObject = null;
-      video.remove();
-      evidenceVideoRef.current = null;
-    };
-  }, [evidenceRequired, aiStream]);
-
-  // Snapshot every 40s (plus an early one once the camera warms up).
-  useEffect(() => {
-    if (!evidenceRequired || !aiStream) return;
-    const initial = setTimeout(captureEvidenceImage, 3000);
-    const id = setInterval(captureEvidenceImage, 40_000);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(id);
-    };
-  }, [evidenceRequired, aiStream, captureEvidenceImage]);
-
   // Record and upload video in 60s chunks.
   useEffect(() => {
     if (!evidenceRequired || !aiStream) return;
@@ -402,43 +316,6 @@ function ExamTestInner() {
       stopCurrentVideoRecording();
     };
   }, [evidenceRequired, aiStream, startVideoChunk, stopCurrentVideoRecording]);
-
-  // ── Draggable position for the self-view PIP ──────────────────────────
-  const pipRef = useRef<HTMLDivElement | null>(null);
-  const pipDragRef = useRef<{ dx: number; dy: number } | null>(null);
-  const [pipPos, setPipPos] = useState<{ left: number; top: number } | null>(
-    null
-  );
-
-  const onPipPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = pipRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    pipDragRef.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
-    el.setPointerCapture(e.pointerId);
-  };
-
-  const onPipPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = pipDragRef.current;
-    const el = pipRef.current;
-    if (!drag || !el) return;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    const left = Math.max(
-      0,
-      Math.min(e.clientX - drag.dx, window.innerWidth - w)
-    );
-    const top = Math.max(
-      0,
-      Math.min(e.clientY - drag.dy, window.innerHeight - h)
-    );
-    setPipPos({ left, top });
-  };
-
-  const onPipPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    pipDragRef.current = null;
-    pipRef.current?.releasePointerCapture(e.pointerId);
-  };
 
   // Submit a single answer to the API
   const submitAnswer = useCallback(
@@ -550,6 +427,11 @@ function ExamTestInner() {
   };
 
   const handleSubmit = async (isAutoSubmit = false) => {
+    if (!isAutoSubmit && !allQuestionsAttempted) {
+      toast.warning("Please attempt all questions before submitting.");
+      return;
+    }
+
     submitPendingTextAnswer();
     // Evidence capture stops automatically when the exam completes (the
     // proctoring stream is torn down, and the capture effects clean up).
@@ -580,14 +462,20 @@ function ExamTestInner() {
     (s) => s === "marked"
   ).length;
   const unansweredCount = questionRefs.length - answeredCount;
+  const allQuestionsAttempted =
+    questionRefs.length > 0 && answeredCount === questionRefs.length;
 
-  // Determine the next test after current one
-  const nextTestLabel =
-    testType === "theory"
-      ? "Practical"
-      : testType === "practical"
-      ? "Viva"
-      : null;
+  // Determine the next available test after current one from the logged-in batch.
+  const nextTestLabel = useMemo(() => {
+    const batch = authBatch as BatchInfo | null;
+    if (!batch) return null;
+    const currentIndex = TEST_SEQUENCE.findIndex(
+      (item) => item.type === testType
+    );
+    if (currentIndex < 0) return null;
+    const nextTest = TEST_SEQUENCE[currentIndex + 1];
+    return nextTest && batch[nextTest.key] ? nextTest.label : null;
+  }, [authBatch, testType]);
 
   const goToDashboard = () => {
     // Mark this test submitted in the persisted exam statuses, then do a full
@@ -749,13 +637,19 @@ function ExamTestInner() {
               <span>{formatTime(timeLeft)}</span>
             </div>
 
-            <button
-              onClick={() => setIsSubmitModalOpen(true)}
-              className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold shadow-md shadow-indigo-100 transition"
-              type="button"
-            >
-              Submit Exam
-            </button>
+            {allQuestionsAttempted ? (
+              <button
+                onClick={() => setIsSubmitModalOpen(true)}
+                className="rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold shadow-md shadow-indigo-100 transition"
+                type="button"
+              >
+                Submit Exam
+              </button>
+            ) : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-500">
+                {answeredCount}/{questionRefs.length} Attempted
+              </div>
+            )}
           </div>
         </header>
 
@@ -1090,64 +984,6 @@ function ExamTestInner() {
           </div>
         )}
 
-        {/* Proctoring self-view (draggable, shows the candidate their live camera) */}
-        {aiEnabled && (
-          <div
-            ref={pipRef}
-            onPointerDown={onPipPointerDown}
-            onPointerMove={onPipPointerMove}
-            onPointerUp={onPipPointerUp}
-            style={
-              pipPos
-                ? { left: pipPos.left, top: pipPos.top, right: "auto", bottom: "auto" }
-                : undefined
-            }
-            className="fixed bottom-4 right-4 z-40 w-40 cursor-move touch-none select-none overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-xl sm:w-48"
-          >
-            <div className="relative aspect-[4/3] w-full">
-              {aiStream ? (
-                <video
-                  ref={previewVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="h-full w-full object-cover"
-                  style={{ transform: "scaleX(-1)" }}
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center">
-                  <FiAlertTriangle className="h-5 w-5 text-amber-400" />
-                  <span className="text-[10px] font-semibold text-slate-300">
-                    {aiStatus === "initializing"
-                      ? "Starting camera…"
-                      : "Camera unavailable — allow camera & mic access"}
-                  </span>
-                </div>
-              )}
-              <div
-                className={`absolute left-1.5 top-1.5 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                  aiStream
-                    ? aiViolations > 0
-                      ? "bg-red-500/90 text-white"
-                      : "bg-emerald-500/90 text-white"
-                    : aiStatus === "error"
-                    ? "bg-amber-500/90 text-white"
-                    : "bg-slate-700/90 text-slate-200"
-                }`}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
-                {aiStream ? "LIVE" : aiStatus === "initializing" ? "…" : "OFF"}
-              </div>
-
-              {evidenceRequired && aiStream && (
-                <div className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-full bg-red-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-                  REC
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </>
   );
