@@ -243,7 +243,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen px-4 py-4 sm:px-6 lg:h-screen lg:overflow-hidden lg:px-8">
       {/* Mobile top bar */}
       <div className="mb-4 flex items-center justify-between lg:hidden">
         <div className="flex items-center gap-3">
@@ -357,7 +357,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1700px] gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1700px] gap-4 lg:h-[calc(100vh-2rem)] lg:min-h-0 lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden">
         {/* Desktop sidebar */}
         <aside className="mesh-panel relative hidden overflow-hidden rounded-[2rem] border border-slate-900/10 p-6 text-white shadow-soft lg:block">
           <div className="grid-overlay absolute inset-0 opacity-30" />
@@ -417,8 +417,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <div className="flex min-h-full flex-col gap-4">
-          <div className="min-h-0 flex-1">{children}</div>
+        <div className="flex min-h-full flex-col gap-4 lg:min-h-0 lg:overflow-hidden">
+          <div className="min-h-0 flex-1 lg:overflow-y-auto">{children}</div>
         </div>
       </div>
     </div>

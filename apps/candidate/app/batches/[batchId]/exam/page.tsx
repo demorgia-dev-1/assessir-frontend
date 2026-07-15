@@ -1,7 +1,14 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "react-toastify";
 import {
   FiBookOpen,
@@ -159,7 +166,11 @@ function ExamDashboardInner() {
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: {
+          facingMode: "user",
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        },
         audio: false,
       });
       streamRef.current = stream;
@@ -257,10 +268,21 @@ function ExamDashboardInner() {
     if (!selectedTest) return;
     setIsStartingApi(true);
     const testType = selectedTest.key.replace("_test", ""); // theory, practical, viva
+    const testData = batch![selectedTest.key];
+
+    if (!testData) {
+      toast.error("Test configuration is missing. Please try again.");
+      setView("instructions");
+      setIsStartingApi(false);
+      return;
+    }
 
     try {
+      // Starting a test now takes the test id (not the test type) and returns a
+      // per-exam token that must be sent as `x-testtaker-token` on every
+      // subsequent exam request (get question, submit answer, end test, evidence).
       const res = await api.post(
-        `/batches/${batchId}/exam/start?testType=${testType}`
+        `/batches/${batchId}/exam/start?test_id=${testData.id}`
       );
 
       if (res.data?.error) {
@@ -269,14 +291,23 @@ function ExamDashboardInner() {
         return;
       }
 
+      // The start endpoint responds with { token: "<jwt>" }.
+      const testTakerToken = res.data?.token ?? null;
+
+      if (!testTakerToken) {
+        toast.error("Could not obtain the exam token. Please try again.");
+        setView("instructions");
+        return;
+      }
+
       toast.success(`${selectedTest.label} started successfully!`);
 
-      const testData = batch![selectedTest.key];
       const encryptedTestData = encryptData({
-        testId: testData!.id,
-        sections: testData!.sections,
-        timeInMinutes: testData!.time_in_minutes,
-        isRandomEvidenceRequired: testData!.is_random_evidence_required ?? false,
+        testId: testData.id,
+        sections: testData.sections,
+        timeInMinutes: testData.time_in_minutes,
+        isRandomEvidenceRequired: testData.is_random_evidence_required ?? false,
+        testTakerToken,
       });
       router.replace(
         `/batches/${batchId}/exam/test?type=${testType}&data=${encryptedTestData}`
@@ -349,7 +380,10 @@ function ExamDashboardInner() {
     : 0;
 
   const selfieUploadedKey = selectedTest
-    ? (`onboardinig_selfie_uploaded_${selectedTest.key.replace("_test", "")}` as keyof BatchData)
+    ? (`onboardinig_selfie_uploaded_${selectedTest.key.replace(
+        "_test",
+        ""
+      )}` as keyof BatchData)
     : null;
   const isSelfieAlreadyUploaded = selfieUploadedKey
     ? !!batch[selfieUploadedKey]
@@ -474,9 +508,7 @@ function ExamDashboardInner() {
                     | "viva";
                   const status =
                     examStatuses?.[testType] ??
-                    batch[
-                      `${testType}_exam_status` as keyof BatchData
-                    ] ??
+                    batch[`${testType}_exam_status` as keyof BatchData] ??
                     null;
                   const isSubmitted =
                     status === "submitted" || status === "completed";
@@ -501,21 +533,25 @@ function ExamDashboardInner() {
                       }`}
                     >
                       {/* Card header */}
-                      <div className={`border-b px-6 py-4 ${
-                        isSubmitted
-                          ? "border-emerald-100 bg-emerald-50/60"
-                          : isUnauthorized
-                          ? "border-amber-100 bg-amber-50/60"
-                          : "border-blue-50 bg-blue-50/40"
-                      }`}>
+                      <div
+                        className={`border-b px-6 py-4 ${
+                          isSubmitted
+                            ? "border-emerald-100 bg-emerald-50/60"
+                            : isUnauthorized
+                            ? "border-amber-100 bg-amber-50/60"
+                            : "border-blue-50 bg-blue-50/40"
+                        }`}
+                      >
                         <div className="flex items-center gap-3">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${
-                            isSubmitted
-                              ? "bg-emerald-600"
-                              : isUnauthorized
-                              ? "bg-amber-500"
-                              : "bg-blue-600"
-                          }`}>
+                          <div
+                            className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${
+                              isSubmitted
+                                ? "bg-emerald-600"
+                                : isUnauthorized
+                                ? "bg-amber-500"
+                                : "bg-blue-600"
+                            }`}
+                          >
                             {isSubmitted ? (
                               <FiCheck className="h-5 w-5" />
                             ) : isUnauthorized ? (
@@ -628,7 +664,8 @@ function ExamDashboardInner() {
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
-                      Step 1 of {needsSelfieCapture ? "3" : "2"} · Exam Guidelines
+                      Step 1 of {needsSelfieCapture ? "3" : "2"} · Exam
+                      Guidelines
                     </span>
                     <h2 className="mt-2 text-xl font-bold text-slate-900 sm:text-2xl">
                       {selectedTest.label} Instructions
@@ -752,8 +789,8 @@ function ExamDashboardInner() {
                     <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                       <FiCheck className="h-5 w-5 shrink-0 text-emerald-500" />
                       <span>
-                        <strong>Selfie already uploaded.</strong> You can proceed
-                        directly to start the test.
+                        <strong>Selfie already uploaded.</strong> You can
+                        proceed directly to start the test.
                       </span>
                     </div>
                   )}
@@ -818,25 +855,35 @@ function ExamDashboardInner() {
                   <ul className="space-y-2 text-sm text-slate-600">
                     <li className="flex items-start gap-2">
                       <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                      <span>Ensure your face is clearly visible and well-lit</span>
+                      <span>
+                        Ensure your face is clearly visible and well-lit
+                      </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                      <span>Remove any hats, sunglasses, or face coverings</span>
+                      <span>
+                        Remove any hats, sunglasses, or face coverings
+                      </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                      <span>Look directly at the camera and keep a neutral expression</span>
+                      <span>
+                        Look directly at the camera and keep a neutral
+                        expression
+                      </span>
                     </li>
                     <li className="flex items-start gap-2">
                       <FiCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                      <span>Make sure the background is plain and not distracting</span>
+                      <span>
+                        Make sure the background is plain and not distracting
+                      </span>
                     </li>
                   </ul>
                 </div>
 
                 {/* Camera / Preview area */}
-                <div className="relative mx-auto mb-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-900"
+                <div
+                  className="relative mx-auto mb-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-900"
                   style={{ maxWidth: 480, aspectRatio: "4/3" }}
                 >
                   {cameraError ? (

@@ -54,6 +54,7 @@ interface TestInfo {
   sections: { id: number; question_ids: number[] }[];
   timeInMinutes: number;
   isRandomEvidenceRequired?: boolean;
+  testTakerToken?: string;
 }
 
 type TestType = "theory" | "practical" | "viva";
@@ -83,6 +84,13 @@ function ExamTestInner() {
     if (!encrypted) return null;
     return decryptData<TestInfo>(encrypted);
   }, [searchParams]);
+
+  // Per-exam token issued by the start endpoint. Sent as `x-testtaker-token` on
+  // every exam request (get question, submit answer, end test, evidence upload).
+  const testTakerHeaders = useMemo(
+    () => ({ "x-testtaker-token": testInfo?.testTakerToken ?? "" }),
+    [testInfo]
+  );
 
   // Build flat question refs from sections
   const questionRefs = useMemo<QuestionRef[]>(() => {
@@ -162,7 +170,8 @@ function ExamTestInner() {
     setIsLoadingQuestion(true);
     api
       .get(
-        `/batches/${batchId}/exam/questions/${ref.questionId}?testId=${testInfo.testId}&sectionId=${ref.sectionId}`
+        `/batches/${batchId}/exam/questions/${ref.questionId}?testId=${testInfo.testId}&sectionId=${ref.sectionId}`,
+        { headers: testTakerHeaders }
       )
       .then((res) => {
         const question = res.data.question ?? res.data;
@@ -222,6 +231,21 @@ function ExamTestInner() {
   const [isSubmittingApi, setIsSubmittingApi] = useState(false);
   const [isExamCompleted, setIsExamCompleted] = useState(false);
 
+  // Heartbeat — ping the exam session every 30s (with the test-taker token) so
+  // the backend knows the candidate is still active. Stops once the exam ends.
+  useEffect(() => {
+    if (!testInfo || !isAuthenticated || isExamCompleted) return;
+
+    const sendHeartbeat = () => {
+      api
+        .get(`/batches/${batchId}/exam/heartbeat`, { headers: testTakerHeaders })
+        .catch((err) => console.error("Heartbeat failed:", err));
+    };
+
+    const id = setInterval(sendHeartbeat, 30_000);
+    return () => clearInterval(id);
+  }, [testInfo, isAuthenticated, isExamCompleted, batchId, testTakerHeaders]);
+
   // AI proctoring — active while the exam is in progress
   const aiEnabled =
     isInitialized && isAuthenticated && !!testInfo && !isExamCompleted;
@@ -245,7 +269,9 @@ function ExamTestInner() {
         const res = await api.post(
           `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(
             fileName
-          )}&evType=${evType}`
+          )}&evType=${evType}`,
+          null,
+          { headers: testTakerHeaders }
         );
         const presignedUrl: string | undefined = res.data?.url;
         if (!presignedUrl) return;
@@ -263,7 +289,7 @@ function ExamTestInner() {
         console.error(`Evidence upload failed (${evType}):`, err);
       }
     },
-    [batchId]
+    [batchId, testTakerHeaders]
   );
 
   const stopCurrentVideoRecording = useCallback(() => {
@@ -332,7 +358,8 @@ function ExamTestInner() {
             answer,
             started_at: questionStartTimeRef.current,
             ended_at: new Date().toISOString(),
-          }
+          },
+          { headers: testTakerHeaders }
         );
       } catch (error) {
         console.error("Failed to submit answer:", error);
@@ -439,7 +466,9 @@ function ExamTestInner() {
     setIsSubmitModalOpen(false);
 
     try {
-      await api.post(`/batches/${batchId}/exam/end?testType=${testType}`);
+      await api.post(`/batches/${batchId}/exam/end?testType=${testType}`, null, {
+        headers: testTakerHeaders,
+      });
 
       localStorage.removeItem(`answers_${batchId}_${testInfo?.testId}`);
       toast.success("Assessment submitted successfully!");

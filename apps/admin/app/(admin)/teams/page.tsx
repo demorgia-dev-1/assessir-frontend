@@ -185,7 +185,7 @@ export default function TeamsPage() {
   const eligibleManagers = users.filter((user) => user.role === "manager");
 
   return (
-    <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6">
+    <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6 lg:h-full lg:min-h-0">
       {/* Header section */}
       <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -206,7 +206,7 @@ export default function TeamsPage() {
         </div>
       </header>
 
-      <div className="grid min-h-0 gap-6 lg:min-h-[calc(100vh-18rem)] lg:grid-cols-[1fr_350px]">
+      <div className="grid min-h-0 gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_350px]">
         {/* Table Section */}
         <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
           <div className="min-h-0 flex-1 overflow-auto">
