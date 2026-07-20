@@ -27,7 +27,6 @@ import api from "@/lib/api";
 import { decryptData } from "@/lib/crypto";
 import { useAiProctoring } from "@/hooks/useAiProctoring";
 
-
 interface QuestionOption {
   id: number;
   text: string;
@@ -61,7 +60,11 @@ type TestType = "theory" | "practical" | "viva";
 
 type BatchInfo = Partial<Record<`${TestType}_test`, unknown>>;
 
-const TEST_SEQUENCE: { type: TestType; label: string; key: `${TestType}_test` }[] = [
+const TEST_SEQUENCE: {
+  type: TestType;
+  label: string;
+  key: `${TestType}_test`;
+}[] = [
   { type: "theory", label: "Theory", key: "theory_test" },
   { type: "practical", label: "Practical", key: "practical_test" },
   { type: "viva", label: "Viva", key: "viva_test" },
@@ -74,9 +77,11 @@ function ExamTestInner() {
   const batchId = params.batchId as string;
   const testType = (searchParams.get("type") || "theory") as TestType;
 
-  const { batch: authBatch, isAuthenticated, isInitialized } = useAppSelector(
-    (state) => state.auth
-  );
+  const {
+    batch: authBatch,
+    isAuthenticated,
+    isInitialized,
+  } = useAppSelector((state) => state.auth);
 
   // Decrypt test info from URL
   const testInfo = useMemo<TestInfo | null>(() => {
@@ -90,6 +95,14 @@ function ExamTestInner() {
   const testTakerHeaders = useMemo(
     () => ({ "x-testtaker-token": testInfo?.testTakerToken ?? "" }),
     [testInfo]
+  );
+
+  // Shared config for every exam request: sends the test-taker token and opts
+  // out of the global 401 auto-logout so a failing exam call surfaces its
+  // response here instead of bouncing the candidate to the login page.
+  const examRequestConfig = useMemo(
+    () => ({ headers: testTakerHeaders, skipAuthRedirect: true } as any),
+    [testTakerHeaders]
   );
 
   // Build flat question refs from sections
@@ -167,24 +180,43 @@ function ExamTestInner() {
     const ref = questionRefs[currentIdx];
     if (!ref || !testInfo || questionsCache[ref.questionId]) return;
 
+    const url = `/batches/${batchId}/exam/questions/${ref.questionId}?testId=${testInfo.testId}&sectionId=${ref.sectionId}`;
+    // eslint-disable-next-line no-console
+    console.log("[exam] GET question →", url, {
+      testTakerToken: testInfo.testTakerToken,
+    });
+
     setIsLoadingQuestion(true);
     api
-      .get(
-        `/batches/${batchId}/exam/questions/${ref.questionId}?testId=${testInfo.testId}&sectionId=${ref.sectionId}`,
-        { headers: testTakerHeaders }
-      )
+      .get(url, examRequestConfig)
       .then((res) => {
+        // eslint-disable-next-line no-console
+        console.log("[exam] GET question ✓", res.status, res.data);
         const question = res.data.question ?? res.data;
         setQuestionsCache((prev) => ({ ...prev, [ref.questionId]: question }));
       })
       .catch((err) => {
-        console.error(err);
-        toast.error("Failed to load question.");
+        // eslint-disable-next-line no-console
+        console.error("[exam] GET question ✗", {
+          status: err?.response?.status,
+          data: err?.response?.data,
+          message: err?.message,
+        });
+        toast.error(
+          `Failed to load question (status ${
+            err?.response?.status ?? "?"
+          }). ${
+            err?.response?.data?.error ||
+            err?.response?.data?.message ||
+            err?.message ||
+            ""
+          }`
+        );
       })
       .finally(() => {
         setIsLoadingQuestion(false);
       });
-  }, [currentIdx, questionRefs, testInfo, batchId, questionsCache]);
+  }, [currentIdx, questionRefs, testInfo, batchId, examRequestConfig, questionsCache]);
 
   // Reset start time when navigating to a new question
   useEffect(() => {
@@ -238,13 +270,19 @@ function ExamTestInner() {
 
     const sendHeartbeat = () => {
       api
-        .get(`/batches/${batchId}/exam/heartbeat`, { headers: testTakerHeaders })
-        .catch((err) => console.error("Heartbeat failed:", err));
+        .get(`/batches/${batchId}/exam/heartbeat`, examRequestConfig)
+        .catch((err) =>
+          // eslint-disable-next-line no-console
+          console.error("[exam] heartbeat ✗", {
+            status: err?.response?.status,
+            data: err?.response?.data,
+          })
+        );
     };
 
     const id = setInterval(sendHeartbeat, 30_000);
     return () => clearInterval(id);
-  }, [testInfo, isAuthenticated, isExamCompleted, batchId, testTakerHeaders]);
+  }, [testInfo, isAuthenticated, isExamCompleted, batchId, examRequestConfig]);
 
   // AI proctoring — active while the exam is in progress
   const aiEnabled =
@@ -271,7 +309,7 @@ function ExamTestInner() {
             fileName
           )}&evType=${evType}`,
           null,
-          { headers: testTakerHeaders }
+          examRequestConfig
         );
         const presignedUrl: string | undefined = res.data?.url;
         if (!presignedUrl) return;
@@ -289,7 +327,7 @@ function ExamTestInner() {
         console.error(`Evidence upload failed (${evType}):`, err);
       }
     },
-    [batchId, testTakerHeaders]
+    [batchId, examRequestConfig]
   );
 
   const stopCurrentVideoRecording = useCallback(() => {
@@ -359,10 +397,23 @@ function ExamTestInner() {
             started_at: questionStartTimeRef.current,
             ended_at: new Date().toISOString(),
           },
-          { headers: testTakerHeaders }
+          examRequestConfig
         );
-      } catch (error) {
-        console.error("Failed to submit answer:", error);
+      } catch (error: any) {
+        console.error("Failed to submit answer:", {
+          status: error?.response?.status,
+          data: error?.response?.data,
+        });
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to submit answer.";
+        toast.error(
+          `Failed to submit answer (status ${
+            error?.response?.status ?? "?"
+          }). ${msg}`
+        );
       }
     },
     [batchId, testInfo, questionRefs]
@@ -466,9 +517,11 @@ function ExamTestInner() {
     setIsSubmitModalOpen(false);
 
     try {
-      await api.post(`/batches/${batchId}/exam/end?testType=${testType}`, null, {
-        headers: testTakerHeaders,
-      });
+      await api.post(
+        `/batches/${batchId}/exam/end?testType=${testType}`,
+        null,
+        examRequestConfig
+      );
 
       localStorage.removeItem(`answers_${batchId}_${testInfo?.testId}`);
       toast.success("Assessment submitted successfully!");
@@ -1012,7 +1065,6 @@ function ExamTestInner() {
             </div>
           </div>
         )}
-
       </div>
     </>
   );

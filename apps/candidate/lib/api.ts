@@ -22,7 +22,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    if (status === 401) {
+    // Requests can opt out of the auto-logout/redirect (e.g. the exam page,
+    // which needs to surface the failing response instead of bouncing to login).
+    const skipAuthRedirect = (error?.config as any)?.skipAuthRedirect;
+    if (status === 401 && !skipAuthRedirect) {
       const hasErrorMessage = error?.response?.data?.error || error?.response?.data?.message;
 
       try {

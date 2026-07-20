@@ -7,6 +7,22 @@ export type Candidate = {
   enrollment_no: string;
   password: string;
   batch_id?: string | number;
+  theory_exam_status?: string | null;
+  practical_exam_status?: string | null;
+  viva_exam_status?: string | null;
+  theory_started_at?: string | null;
+  theory_ended_at?: string | null;
+  practical_started_at?: string | null;
+  practical_ended_at?: string | null;
+  viva_started_at?: string | null;
+  viva_ended_at?: string | null;
+  is_authorized_for_theory?: boolean | null;
+  is_authorized_for_practical?: boolean | null;
+  is_authorized_for_viva?: boolean | null;
+  onboarding_selfie_uploaded_theory?: boolean | null;
+  onboarding_selfie_uploaded_practical?: boolean | null;
+  onboarding_selfie_uploaded_viva?: boolean | null;
+  last_heartbeat?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -102,6 +118,28 @@ function normalizeCandidate(raw: any): Candidate {
     enrollment_no: raw.enrollment_no ?? raw.EnrollmentNo ?? "",
     password: raw.password ?? raw.Password ?? "",
     batch_id: raw.batch_id ?? raw.BatchID ?? raw.batchId,
+    theory_exam_status: raw.theory_exam_status ?? null,
+    practical_exam_status: raw.practical_exam_status ?? null,
+    viva_exam_status: raw.viva_exam_status ?? null,
+    theory_started_at: raw.theory_started_at ?? null,
+    theory_ended_at: raw.theory_ended_at ?? null,
+    practical_started_at: raw.practical_started_at ?? null,
+    practical_ended_at: raw.practical_ended_at ?? null,
+    viva_started_at: raw.viva_started_at ?? null,
+    viva_ended_at: raw.viva_ended_at ?? null,
+    is_authorized_for_theory:
+      raw.IsAuthorizedForTheory ?? raw.is_authorized_for_theory ?? null,
+    is_authorized_for_practical:
+      raw.IsAuthorizedForPractical ?? raw.is_authorized_for_practical ?? null,
+    is_authorized_for_viva:
+      raw.IsAuthorizedForViva ?? raw.is_authorized_for_viva ?? null,
+    onboarding_selfie_uploaded_theory:
+      raw.onboarding_selfie_uploaded_theory ?? null,
+    onboarding_selfie_uploaded_practical:
+      raw.onboarding_selfie_uploaded_practical ?? null,
+    onboarding_selfie_uploaded_viva:
+      raw.onboarding_selfie_uploaded_viva ?? null,
+    last_heartbeat: raw.last_heartbeat ?? raw.LastHeartbeat ?? null,
     created_at: raw.created_at ?? raw.CreatedAt,
     updated_at: raw.updated_at ?? raw.UpdatedAt,
   };

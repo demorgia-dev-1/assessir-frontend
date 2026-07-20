@@ -13,6 +13,8 @@ import {
   FiEyeOff,
   FiRefreshCw,
   FiUserCheck,
+  FiPlay,
+  FiPause,
   FiPlus,
   FiTrash2,
   FiUploadCloud,
@@ -104,6 +106,73 @@ function getAttendanceTestOptions(batch: any) {
   return ATTENDANCE_TEST_TYPES.filter(
     (type) => Boolean(batch[type.testKey]) || Boolean(batch[type.idKey])
   );
+}
+
+// Canonicalize the status string from the API into a lookup key
+// ("not initialized" → "not_initialized", "in_progress" stays).
+function canonicalExamStatus(raw: any): string {
+  return String(raw ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_");
+}
+
+// Only the statuses the API actually returns.
+const EXAM_STATUS_META: Record<string, { label: string; badge: string }> = {
+  not_initialized: {
+    label: "Not Initialized",
+    badge: "bg-slate-100 text-slate-600 border-slate-200",
+  },
+  in_progress: {
+    label: "In Progress",
+    badge: "bg-blue-100 text-blue-700 border-blue-200",
+  },
+  disconnected: {
+    label: "Disconnected",
+    badge: "bg-rose-100 text-rose-700 border-rose-200",
+  },
+  completed: {
+    label: "Completed",
+    badge: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  },
+  paused: {
+    label: "Paused",
+    badge: "bg-amber-100 text-amber-700 border-amber-200",
+  },
+  resume: {
+    label: "Resume",
+    badge: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  },
+  authorized: {
+    label: "Authorized",
+    badge: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  },
+  unauthorized: {
+    label: "Unauthorized",
+    badge: "bg-rose-100 text-rose-700 border-rose-200",
+  },
+};
+
+function examStatusLabel(canonical: string): string {
+  return (
+    EXAM_STATUS_META[canonical]?.label ??
+    canonical.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+// Relative "x ago" for the candidate's last heartbeat timestamp.
+function formatHeartbeat(iso?: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  const sec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (sec < 0) return date.toLocaleString();
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return date.toLocaleString();
 }
 
 type NosForm = {
@@ -515,6 +584,18 @@ export default function BatchesPage() {
   const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
   const [batchToPublish, setBatchToPublish] = useState<Batch | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  // Resume/pause a candidate's test. `pause: false` resumes, `pause: true`
+  // pauses. Needs the test id for the selected test type + the candidate id.
+  const [pauseTestType, setPauseTestType] = useState<
+    "theory" | "practical" | "viva"
+  >("theory");
+  const [pauseLoading, setPauseLoading] = useState<
+    Record<string | number, boolean>
+  >({});
+  // Live status per test type (from the exam/status API), shown next to each
+  // test in the structure (test info) tab.
+  const [testStatuses, setTestStatuses] = useState<Record<string, string>>({});
+  const [testStatusLoading, setTestStatusLoading] = useState(false);
   const attendanceTestOptions = useMemo(
     () => getAttendanceTestOptions(selectedBatch),
     [selectedBatch]
@@ -549,6 +630,71 @@ export default function BatchesPage() {
       setAttendanceTestType(attendanceTestOptions[0].value);
     }
   }, [attendanceTestOptions, attendanceTestType]);
+
+  // Keep the pause/resume test selection valid for the current batch.
+  useEffect(() => {
+    if (
+      attendanceTestOptions.length > 0 &&
+      !attendanceTestOptions.some((type) => type.value === pauseTestType)
+    ) {
+      setPauseTestType(attendanceTestOptions[0].value);
+    }
+  }, [attendanceTestOptions, pauseTestType]);
+
+  // Fetch each test's status for the structure (test info) tab.
+  useEffect(() => {
+    if (!detailsOpen || detailsTab !== "structure" || !selectedBatch) {
+      return;
+    }
+    const batchAny = selectedBatch as any;
+    const types: ("theory" | "practical" | "viva")[] = [
+      "theory",
+      "practical",
+      "viva",
+    ];
+    const targets = types
+      .map((type) => ({
+        type,
+        testId:
+          batchAny?.[`${type}_test`]?.id ??
+          batchAny?.[`${type}_test_id`] ??
+          null,
+      }))
+      .filter((target) => target.testId);
+
+    if (!targets.length) {
+      setTestStatuses({});
+      return;
+    }
+
+    let active = true;
+    setTestStatusLoading(true);
+    Promise.all(
+      targets.map(async ({ type, testId }) => {
+        try {
+          const res = await api.get(
+            `/batches/${selectedBatch.id}/exam/status?test_id=${testId}`
+          );
+          const raw =
+            res.data?.status ??
+            res.data?.exam_status ??
+            res.data?.data?.status ??
+            res.data;
+          return [type, canonicalExamStatus(raw)] as const;
+        } catch {
+          return [type, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!active) return;
+      setTestStatuses(Object.fromEntries(entries.filter(([, s]) => s)));
+      setTestStatusLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [detailsOpen, detailsTab, selectedBatch]);
 
   const filteredJobRoles = useMemo(
     () =>
@@ -921,35 +1067,11 @@ export default function BatchesPage() {
   };
 
   const handleView = (id: string | number) => {
-    setDetailsOpen(true);
-    setDetailsTab("structure");
-    setIsAddingManually(false);
-    setManualCandidates([{ enrollment_no: "", password: "" }]);
-    setIsUploadingExcel(false);
-    setExcelFile(null);
-    setExcelValidationErrors([]);
-    setExcelParsedCandidates([]);
-    setRevealedPasswords({});
-    setLoadingPasswords({});
-    setCandidateSelectedIds(new Set());
-    dispatch(fetchBatchById(id));
-    dispatch(fetchCandidates(id));
+    router.push(`/batches/batchdetails?batchId=${id}`);
   };
 
   const handleAddCandidates = (id: string | number) => {
-    setDetailsOpen(true);
-    setDetailsTab("candidates");
-    setIsAddingManually(false);
-    setManualCandidates([{ enrollment_no: "", password: "" }]);
-    setIsUploadingExcel(false);
-    setExcelFile(null);
-    setExcelValidationErrors([]);
-    setExcelParsedCandidates([]);
-    setRevealedPasswords({});
-    setLoadingPasswords({});
-    setCandidateSelectedIds(new Set());
-    dispatch(fetchBatchById(id));
-    dispatch(fetchCandidates(id));
+    router.push(`/batches/candidates?batchId=${id}`);
   };
 
   const handleShowPassword = async (enrollmentNo: string) => {
@@ -1079,6 +1201,51 @@ export default function BatchesPage() {
       toast.error(msg);
     } finally {
       setIsMarkingAttendance(false);
+    }
+  };
+
+  // Resolve the test id for a given test type from the selected batch.
+  const getTestIdForType = (type: "theory" | "practical" | "viva") => {
+    const batch = selectedBatch as any;
+    return batch?.[`${type}_test`]?.id ?? batch?.[`${type}_test_id`] ?? null;
+  };
+
+  const handleResumeOrPause = async (
+    candidateId: string | number,
+    pause: boolean
+  ) => {
+    if (!selectedBatch) return;
+    const testId = getTestIdForType(pauseTestType);
+    if (!testId) {
+      toast.error("No test is available to pause/resume for this batch.");
+      return;
+    }
+
+    setPauseLoading((prev) => ({ ...prev, [candidateId]: true }));
+    try {
+      const res = await api.post(
+        `/batches/${selectedBatch.id}/resume-or-pause`,
+        {
+          pause,
+          test_id: testId,
+          candidate_id: candidateId,
+        }
+      );
+      if (res.data?.error) {
+        toast.error(res.data.error);
+        return;
+      }
+      toast.success(
+        pause ? "Test paused for candidate." : "Test resumed for candidate."
+      );
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        "Failed to update the candidate's test state.";
+      toast.error(msg);
+    } finally {
+      setPauseLoading((prev) => ({ ...prev, [candidateId]: false }));
     }
   };
 
@@ -1697,577 +1864,6 @@ export default function BatchesPage() {
         </div>
       )}
 
-      {detailsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
-          <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-7 py-5">
-              <h2 className="text-xl font-semibold text-slate-950">
-                Batch Details
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setDetailsOpen(false);
-                  setRevealedPasswords({});
-                  setLoadingPasswords({});
-                  dispatch(clearSelectedBatch());
-                }}
-                className="rounded-xl border border-slate-200 p-2 text-slate-500"
-              >
-                <FiX className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="overflow-y-auto p-7">
-              {viewLoading ? (
-                <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
-              ) : selectedBatch ? (
-                <div className="space-y-5">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        #{selectedBatch.id}
-                      </p>
-                      <h3 className="text-2xl font-semibold text-slate-950">
-                        {selectedBatch.name}
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {getBatchJobRoleName(selectedBatch)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Candidate Exam Link */}
-                  <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.15em] text-sky-700 mb-2">
-                      Candidate Exam Link
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 overflow-hidden rounded-xl border border-sky-200 bg-white px-3 py-2.5">
-                        <p className="truncate text-xs font-mono text-slate-600">
-                          {`${
-                            process.env.NEXT_PUBLIC_CANDIDATE_APP_URL ||
-                            "http://localhost:3002"
-                          }/batches/${selectedBatch.id}/exam/login`}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const url = `${
-                            process.env.NEXT_PUBLIC_CANDIDATE_APP_URL ||
-                            "http://localhost:3002"
-                          }/batches/${selectedBatch.id}/exam/login`;
-                          navigator.clipboard.writeText(url);
-                          toast.success("Exam link copied to clipboard!");
-                        }}
-                        className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
-                        title="Copy Link"
-                      >
-                        <FiCopy className="h-3.5 w-3.5" />
-                        Copy
-                      </button>
-                      <a
-                        href={`${
-                          process.env.NEXT_PUBLIC_CANDIDATE_APP_URL ||
-                          "http://localhost:3002"
-                        }/batches/${selectedBatch.id}/exam/login`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
-                        title="Open Exam Link"
-                      >
-                        <FiExternalLink className="h-3.5 w-3.5" />
-                        Open
-                      </a>
-                    </div>
-                  </div>
-
-                  <div className="flex border-b border-slate-100 gap-4 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setDetailsTab("structure")}
-                      className={`border-b-2 pb-3 text-sm font-semibold transition ${
-                        detailsTab === "structure"
-                          ? "border-slate-950 text-slate-950"
-                          : "border-transparent text-slate-500 hover:text-slate-950"
-                      }`}
-                    >
-                      Structure & Sections
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDetailsTab("candidates")}
-                      className={`border-b-2 pb-3 text-sm font-semibold transition ${
-                        detailsTab === "candidates"
-                          ? "border-slate-950 text-slate-950"
-                          : "border-transparent text-slate-500 hover:text-slate-950"
-                      }`}
-                    >
-                      Candidates ({batchCandidates.length})
-                    </button>
-                  </div>
-
-                  {detailsTab === "structure" && (
-                    <div className="space-y-5">
-                      <TestDetailsSection
-                        test={selectedBatch.theory_test}
-                        type="theory"
-                      />
-                      <TestDetailsSection
-                        test={selectedBatch.practical_test}
-                        type="practical"
-                      />
-                      <TestDetailsSection
-                        test={selectedBatch.viva_test}
-                        type="viva"
-                      />
-                    </div>
-                  )}
-
-                  {detailsTab === "candidates" && (
-                    <div className="space-y-4">
-                      {isAddingManually ? (
-                        <form
-                          onSubmit={handleManualCandidateSave}
-                          className="space-y-4 rounded-2xl border border-slate-100 p-5 bg-slate-50/50"
-                        >
-                          <h4 className="text-sm font-bold text-slate-900">
-                            Add Candidates Manually
-                          </h4>
-                          <div className="space-y-3">
-                            {manualCandidates.map((cand, idx) => (
-                              <div
-                                key={idx}
-                                className="flex gap-3 items-center"
-                              >
-                                <input
-                                  type="text"
-                                  value={cand.enrollment_no}
-                                  onChange={(e) => {
-                                    const next = [...manualCandidates];
-                                    next[idx].enrollment_no = e.target.value;
-                                    setManualCandidates(next);
-                                  }}
-                                  placeholder="Enrollment No"
-                                  className={INPUT_CLASS}
-                                  required
-                                />
-                                <input
-                                  type="text"
-                                  value={cand.password}
-                                  onChange={(e) => {
-                                    const next = [...manualCandidates];
-                                    next[idx].password = e.target.value;
-                                    setManualCandidates(next);
-                                  }}
-                                  placeholder="Password"
-                                  className={INPUT_CLASS}
-                                  required
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (manualCandidates.length > 1) {
-                                      setManualCandidates(
-                                        manualCandidates.filter(
-                                          (_, i) => i !== idx
-                                        )
-                                      );
-                                    }
-                                  }}
-                                  disabled={manualCandidates.length <= 1}
-                                  className="rounded-xl border border-red-200 p-3 text-red-600 transition hover:bg-red-50 disabled:opacity-40 animate-in fade-in duration-200"
-                                >
-                                  <FiTrash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex justify-between items-center mt-4 pt-2 border-t border-slate-200/60">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setManualCandidates([
-                                  ...manualCandidates,
-                                  { enrollment_no: "", password: "" },
-                                ])
-                              }
-                              className="text-xs font-semibold text-slate-700 hover:text-slate-950 flex items-center gap-1.5 transition"
-                            >
-                              <FiPlus className="h-3.5 w-3.5" /> Add Row
-                            </button>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setIsAddingManually(false);
-                                  setManualCandidates([
-                                    { enrollment_no: "", password: "" },
-                                  ]);
-                                }}
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="submit"
-                                disabled={candidatesLoading}
-                                className="rounded-xl bg-slate-950 px-5 py-2 text-xs font-semibold text-white disabled:opacity-50 shadow-md transition hover:opacity-90"
-                              >
-                                {candidatesLoading
-                                  ? "Saving..."
-                                  : "Save Candidates"}
-                              </button>
-                            </div>
-                          </div>
-                        </form>
-                      ) : isUploadingExcel ? (
-                        <div className="space-y-4 rounded-2xl border border-slate-100 p-5 bg-slate-50/50">
-                          <div className="flex justify-between items-center">
-                            <h4 className="text-sm font-bold text-slate-900">
-                              Upload Excel Sheet
-                            </h4>
-                            <button
-                              type="button"
-                              onClick={handleDownloadCandidatesTemplate}
-                              className="text-xs font-semibold text-slate-700 hover:text-slate-950 flex items-center gap-1"
-                            >
-                              <FiDownload className="h-3.5 w-3.5" /> Download
-                              Template
-                            </button>
-                          </div>
-
-                          {!excelFile ? (
-                            <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 bg-white rounded-2xl p-8 cursor-pointer hover:border-slate-400 transition-all duration-300">
-                              <FiUploadCloud className="h-8 w-8 text-slate-400 mb-2" />
-                              <span className="text-xs font-semibold text-slate-700">
-                                Click to upload candidates Excel file
-                              </span>
-                              <span className="text-[10px] text-slate-400 mt-1">
-                                Accepts only .xlsx template files
-                              </span>
-                              <input
-                                type="file"
-                                accept=".xlsx"
-                                onChange={handleExcelCandidatesFileChange}
-                                className="hidden"
-                              />
-                            </label>
-                          ) : (
-                            <div className="space-y-3 animate-in zoom-in-95 duration-200">
-                              <div className="flex items-center justify-between bg-white border border-slate-100 p-3.5 rounded-2xl">
-                                <div className="flex items-center gap-2.5">
-                                  <FiFileText className="h-5 w-5 text-slate-500" />
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-950">
-                                      {excelFile.name}
-                                    </p>
-                                    <p className="text-[10px] text-slate-400">
-                                      Parsed {excelParsedCandidates.length} rows
-                                    </p>
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setExcelFile(null);
-                                    setExcelParsedCandidates([]);
-                                    setExcelValidationErrors([]);
-                                  }}
-                                  className="text-xs font-semibold text-red-600 hover:underline"
-                                >
-                                  Remove
-                                </button>
-                              </div>
-
-                              {excelValidationErrors.length > 0 && (
-                                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 max-h-36 overflow-y-auto space-y-1">
-                                  {excelValidationErrors.map((err, idx) => (
-                                    <p
-                                      key={idx}
-                                      className="text-[11px] text-amber-800 flex items-start gap-1"
-                                    >
-                                      <FiAlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600" />
-                                      <span>{err.message}</span>
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
-
-                              <div className="flex justify-end gap-2 mt-4 pt-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsUploadingExcel(false);
-                                    setExcelFile(null);
-                                    setExcelParsedCandidates([]);
-                                    setExcelValidationErrors([]);
-                                  }}
-                                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleSaveExcelCandidates}
-                                  disabled={
-                                    candidatesLoading ||
-                                    excelValidationErrors.some(
-                                      (e) => e.type === "error"
-                                    ) ||
-                                    excelParsedCandidates.length === 0
-                                  }
-                                  className="rounded-xl bg-slate-950 px-5 py-2 text-xs font-semibold text-white disabled:opacity-50 transition hover:opacity-90"
-                                >
-                                  {candidatesLoading
-                                    ? "Saving..."
-                                    : "Save Candidates"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                          <div className="flex justify-between items-center gap-3">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              Registered Candidates
-                            </span>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsAddingManually(true)}
-                                className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-350 transition"
-                              >
-                                Add Candidate
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setIsUploadingExcel(true)}
-                                className="rounded-xl bg-slate-950 px-3.5 py-1.5 text-xs font-bold text-white hover:opacity-90 transition"
-                              >
-                                Upload Excel
-                              </button>
-                            </div>
-                          </div>
-
-                          {candidatesLoading && batchCandidates.length === 0 ? (
-                            <div className="h-32 animate-pulse rounded-2xl bg-slate-100 flex items-center justify-center text-xs text-slate-400">
-                              Loading candidates...
-                            </div>
-                          ) : batchCandidates.length > 0 ? (
-                            <div className="overflow-hidden rounded-2xl border border-slate-150 shadow-sm">
-                              {candidateSelectedIds.size > 0 && (
-                                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-5 py-2.5">
-                                  <span className="text-xs font-semibold text-slate-700">
-                                    {candidateSelectedIds.size} selected
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (attendanceTestOptions[0]) {
-                                          setAttendanceTestType(
-                                            attendanceTestOptions[0].value
-                                          );
-                                        }
-                                        setShowAttendanceModal(true);
-                                      }}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-                                    >
-                                      <FiUserCheck className="h-3.5 w-3.5" />
-                                      Mark Attendance
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setShowCandidateDeleteModal(true)
-                                      }
-                                      disabled={candidatesDeleting}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
-                                    >
-                                      <FiTrash2 className="h-3.5 w-3.5" />
-                                      Delete Selected
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                              <table className="w-full text-left">
-                                <thead className="bg-slate-50/70 border-b border-slate-150">
-                                  <tr>
-                                    <th className="px-4 py-3.5">
-                                      <input
-                                        type="checkbox"
-                                        checked={
-                                          batchCandidates.length > 0 &&
-                                          candidateSelectedIds.size ===
-                                            batchCandidates.length
-                                        }
-                                        onChange={toggleCandidateSelectAll}
-                                        className="h-4 w-4 rounded border-slate-300 accent-slate-950 cursor-pointer"
-                                      />
-                                    </th>
-                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                      #
-                                    </th>
-                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                      Enrollment No
-                                    </th>
-                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                      Password
-                                    </th>
-                                    <th className="px-5 py-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                      Actions
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 bg-white">
-                                  {batchCandidates.map((cand, idx) => (
-                                    <tr
-                                      key={cand.id || idx}
-                                      onClick={() =>
-                                        toggleCandidateSelect(cand.id!)
-                                      }
-                                      className={`cursor-pointer transition-colors hover:bg-slate-50/50 ${
-                                        candidateSelectedIds.has(cand.id!)
-                                          ? "bg-red-50/40"
-                                          : ""
-                                      }`}
-                                    >
-                                      <td
-                                        className="px-4 py-3"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={candidateSelectedIds.has(
-                                            cand.id!
-                                          )}
-                                          onChange={() =>
-                                            toggleCandidateSelect(cand.id!)
-                                          }
-                                          className="h-4 w-4 rounded border-slate-300 accent-slate-950 cursor-pointer"
-                                        />
-                                      </td>
-                                      <td className="px-5 py-3 text-xs font-medium text-slate-400">
-                                        {idx + 1}
-                                      </td>
-                                      <td className="px-5 py-3 text-xs font-semibold text-slate-900">
-                                        {cand.enrollment_no}
-                                      </td>
-                                      <td
-                                        className="px-5 py-3 text-xs text-slate-600"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <code className="bg-slate-50 rounded px-2 py-0.5 font-mono text-[11px] border border-slate-100 min-w-[80px] text-center inline-block">
-                                            {revealedPasswords[
-                                              cand.enrollment_no
-                                            ]
-                                              ? revealedPasswords[
-                                                  cand.enrollment_no
-                                                ]
-                                              : "••••••••"}
-                                          </code>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleShowPassword(
-                                                cand.enrollment_no
-                                              )
-                                            }
-                                            className="text-slate-400 hover:text-slate-900 transition-colors p-1 rounded-md hover:bg-slate-100 flex items-center justify-center shrink-0"
-                                            title={
-                                              revealedPasswords[
-                                                cand.enrollment_no
-                                              ]
-                                                ? "Hide Password"
-                                                : "Show Password"
-                                            }
-                                            disabled={
-                                              loadingPasswords[
-                                                cand.enrollment_no
-                                              ]
-                                            }
-                                          >
-                                            {loadingPasswords[
-                                              cand.enrollment_no
-                                            ] ? (
-                                              <svg
-                                                className="animate-spin h-3.5 w-3.5 text-slate-500"
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                              >
-                                                <circle
-                                                  className="opacity-25"
-                                                  cx="12"
-                                                  cy="12"
-                                                  r="10"
-                                                  stroke="currentColor"
-                                                  strokeWidth="4"
-                                                ></circle>
-                                                <path
-                                                  className="opacity-75"
-                                                  fill="currentColor"
-                                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                                ></path>
-                                              </svg>
-                                            ) : revealedPasswords[
-                                                cand.enrollment_no
-                                              ] ? (
-                                              <FiEyeOff className="h-3.5 w-3.5" />
-                                            ) : (
-                                              <FiEye className="h-3.5 w-3.5" />
-                                            )}
-                                          </button>
-                                        </div>
-                                      </td>
-                                      <td
-                                        className="px-5 py-3 text-xs"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setResetCandidateId(cand.id!)
-                                          }
-                                          disabled={candidatesResetting}
-                                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
-                                        >
-                                          <FiRefreshCw className="h-3.5 w-3.5" />
-                                          Reset
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center">
-                              <FiUsers className="h-7 w-7 text-slate-400 mx-auto mb-2" />
-                              <h5 className="text-sm font-bold text-slate-950">
-                                No Candidates Registered
-                              </h5>
-                              <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                                Click Add Candidate or Upload Excel to register
-                                candidates for this batch.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">No batch selected.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {batchToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 modal-overlay">
@@ -2385,168 +1981,6 @@ export default function BatchesPage() {
         </div>
       )}
 
-      {/* Candidate bulk delete confirmation */}
-      {showCandidateDeleteModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
-                <FiAlertTriangle className="h-6 w-6 animate-pulse" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
-                  Remove Candidates
-                </h2>
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Action is Permanent
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-slate-600">
-              Are you sure you want to remove{" "}
-              <span className="font-semibold text-slate-950">
-                {candidateSelectedIds.size} candidate
-                {candidateSelectedIds.size > 1 ? "s" : ""}
-              </span>{" "}
-              from this batch?
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowCandidateDeleteModal(false)}
-                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                disabled={candidatesDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmCandidateDelete}
-                className="flex-1 rounded-2xl bg-red-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50"
-                disabled={candidatesDeleting}
-              >
-                {candidatesDeleting ? "Removing…" : "Remove Candidates"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Candidate reset confirmation */}
-      {resetCandidateId && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-500">
-                <FiAlertTriangle className="h-6 w-6 animate-pulse" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
-                  Reset Candidate
-                </h2>
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Please Confirm
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-slate-600">
-              Are you sure you want to reset candidate{" "}
-              <span className="font-semibold text-slate-950">
-                {batchCandidates.find((c) => c.id === resetCandidateId)
-                  ?.enrollment_no || resetCandidateId}
-              </span>
-              ? This will clear their exam progress.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setResetCandidateId(null)}
-                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                disabled={candidatesResetting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmResetCandidate}
-                className="flex-1 rounded-2xl bg-amber-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-amber-500/20 transition hover:bg-amber-600 disabled:opacity-50"
-                disabled={candidatesResetting}
-              >
-                {candidatesResetting ? "Resetting…" : "Reset Candidate"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mark attendance modal */}
-      {showAttendanceModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="glass-panel w-full max-w-md rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/10">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                <FiUserCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight text-slate-950">
-                  Mark Attendance
-                </h2>
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  {candidateSelectedIds.size} Candidate
-                  {candidateSelectedIds.size > 1 ? "s" : ""} Selected
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5">
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Test Type
-              </label>
-              <select
-                value={attendanceTestType}
-                disabled={attendanceTestOptions.length === 0}
-                onChange={(e) =>
-                  setAttendanceTestType(
-                    e.target.value as "theory" | "practical" | "viva"
-                  )
-                }
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
-              >
-                {attendanceTestOptions.length > 0 ? (
-                  attendanceTestOptions.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))
-                ) : (
-                  <option value={attendanceTestType}>No tests available</option>
-                )}
-              </select>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowAttendanceModal(false)}
-                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                disabled={isMarkingAttendance}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleMarkAttendance}
-                className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50"
-                disabled={
-                  isMarkingAttendance || attendanceTestOptions.length === 0
-                }
-              >
-                {isMarkingAttendance ? "Marking…" : "Confirm Attendance"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 }
@@ -2579,7 +2013,17 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function TestDetailsSection({ test, type }: { test: any; type: string }) {
+function TestDetailsSection({
+  test,
+  type,
+  status,
+  statusLoading,
+}: {
+  test: any;
+  type: string;
+  status?: string;
+  statusLoading?: boolean;
+}) {
   if (!test) return null;
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50/30 p-5 space-y-4">
@@ -2592,9 +2036,26 @@ function TestDetailsSection({ test, type }: { test: any; type: string }) {
             {test.Name || `${type} Test`}
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
-          {test.time_in_minutes || 0} mins
-        </span>
+        <div className="flex items-center gap-2">
+          {statusLoading ? (
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              …
+            </span>
+          ) : status ? (
+            <span
+              title="Test status"
+              className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                EXAM_STATUS_META[status]?.badge ??
+                "bg-slate-100 text-slate-600 border-slate-200"
+              }`}
+            >
+              {examStatusLabel(status)}
+            </span>
+          ) : null}
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
+            {test.time_in_minutes || 0} mins
+          </span>
+        </div>
       </div>
 
       <div className="space-y-4">

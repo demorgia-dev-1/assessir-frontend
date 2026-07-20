@@ -82,6 +82,36 @@ const TEST_CARDS: {
   },
 ];
 
+/* ── Exam status → UI mapping ────────────────────────── */
+// Canonicalize the status string from the API into a lookup key
+// ("not initialized" → "not_initialized", "in_progress" stays).
+function canonicalExamStatus(raw: unknown): string {
+  return String(raw ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_");
+}
+
+// Only the statuses the API actually returns.
+const STATUS_META: Record<string, { label: string; badge: string }> = {
+  not_initialized: {
+    label: "Not Initialized",
+    badge: "bg-slate-100 text-slate-600",
+  },
+  in_progress: { label: "In Progress", badge: "bg-blue-100 text-blue-700" },
+  disconnected: { label: "Disconnected", badge: "bg-rose-100 text-rose-700" },
+  completed: { label: "Completed", badge: "bg-emerald-100 text-emerald-700" },
+  paused: { label: "Paused", badge: "bg-amber-100 text-amber-700" },
+  resume: { label: "Resume", badge: "bg-indigo-100 text-indigo-700" },
+};
+
+function examStatusLabel(canonical: string): string {
+  return (
+    STATUS_META[canonical]?.label ??
+    canonical.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
 /* ── Inner component (needs useSearchParams inside Suspense) ── */
 function ExamDashboardInner() {
   const params = useParams();
@@ -98,7 +128,6 @@ function ExamDashboardInner() {
     isInitialized,
     session,
     batch: authBatch,
-    examStatuses,
   } = useAppSelector((state) => state.auth);
 
   // Batch data is persisted at login (redux + sessionStorage). Fall back to an
@@ -128,6 +157,51 @@ function ExamDashboardInner() {
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [isUploadingSelfie, setIsUploadingSelfie] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Per-test exam status (from the status API), keyed by test card key. Drives
+  // which button each test card shows (Start / Resume / Paused / Submitted).
+  const [testStatuses, setTestStatuses] = useState<Record<string, string>>({});
+  const [statusesLoading, setStatusesLoading] = useState(true);
+
+  useEffect(() => {
+    if (!batch) return;
+    const available = TEST_CARDS.filter((card) => batch[card.key]);
+    if (!available.length) {
+      setStatusesLoading(false);
+      return;
+    }
+
+    let active = true;
+    setStatusesLoading(true);
+    Promise.all(
+      available.map(async (card) => {
+        const testId = (batch[card.key] as TestData).id;
+        try {
+          const res = await api.get(
+            `/batches/${batchId}/exam/status?test_id=${testId}`
+          );
+          const raw =
+            res.data?.status ??
+            res.data?.exam_status ??
+            res.data?.data?.status ??
+            res.data;
+          return [card.key, canonicalExamStatus(raw)] as const;
+        } catch {
+          return [card.key, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (active) {
+        // Only keep statuses that actually came back from the response.
+        setTestStatuses(Object.fromEntries(entries.filter(([, s]) => s)));
+        setStatusesLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [batch, batchId]);
 
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
@@ -502,18 +576,6 @@ function ExamDashboardInner() {
                   const test = batch[card.key];
                   if (!test) return null;
 
-                  const testType = card.key.replace("_test", "") as
-                    | "theory"
-                    | "practical"
-                    | "viva";
-                  const status =
-                    examStatuses?.[testType] ??
-                    batch[`${testType}_exam_status` as keyof BatchData] ??
-                    null;
-                  const isSubmitted =
-                    status === "submitted" || status === "completed";
-                  const isUnauthorized = status === "unauthorized";
-
                   const questionCount =
                     test.sections?.reduce(
                       (sum: number, s: TestSection) =>
@@ -521,60 +583,37 @@ function ExamDashboardInner() {
                       0
                     ) ?? 0;
 
+                  const statusKind = testStatuses[card.key] ?? "";
+                  const statusMeta = STATUS_META[statusKind];
+
                   return (
                     <div
                       key={card.key}
-                      className={`group flex flex-col overflow-hidden rounded-2xl border shadow-sm transition ${
-                        isSubmitted
-                          ? "border-emerald-200 bg-emerald-50/30"
-                          : isUnauthorized
-                          ? "border-amber-200 bg-amber-50/30"
-                          : "border-blue-100/80 bg-white hover:shadow-md hover:border-blue-200"
-                      }`}
+                      className="group flex flex-col overflow-hidden rounded-2xl border border-blue-100/80 bg-white shadow-sm transition hover:shadow-md hover:border-blue-200"
                     >
                       {/* Card header */}
-                      <div
-                        className={`border-b px-6 py-4 ${
-                          isSubmitted
-                            ? "border-emerald-100 bg-emerald-50/60"
-                            : isUnauthorized
-                            ? "border-amber-100 bg-amber-50/60"
-                            : "border-blue-50 bg-blue-50/40"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-9 w-9 items-center justify-center rounded-lg text-white ${
-                              isSubmitted
-                                ? "bg-emerald-600"
-                                : isUnauthorized
-                                ? "bg-amber-500"
-                                : "bg-blue-600"
-                            }`}
-                          >
-                            {isSubmitted ? (
-                              <FiCheck className="h-5 w-5" />
-                            ) : isUnauthorized ? (
-                              <FiAlertTriangle className="h-5 w-5" />
-                            ) : (
-                              card.icon
-                            )}
+                      <div className="border-b border-blue-50 bg-blue-50/40 px-6 py-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
+                              {card.icon}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900">
+                                {card.label}
+                              </h3>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="text-sm font-bold text-slate-900">
-                              {card.label}
-                            </h3>
-                            {isSubmitted && (
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
-                                Submitted
-                              </p>
-                            )}
-                            {isUnauthorized && (
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                                Unauthorized
-                              </p>
-                            )}
-                          </div>
+                          {!statusesLoading && statusKind && (
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                statusMeta?.badge ??
+                                "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {examStatusLabel(statusKind)}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -614,19 +653,27 @@ function ExamDashboardInner() {
                           </div>
                         </div>
 
-                        {isSubmitted ? (
-                          <div className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-100 px-5 py-3 text-sm font-semibold text-emerald-700">
-                            <FiCheck className="h-4 w-4" />
-                            Exam Submitted
-                          </div>
-                        ) : isUnauthorized ? (
+                        {statusesLoading ? (
                           <button
-                            className="mt-6 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-amber-100 px-5 py-3 text-sm font-semibold text-amber-700"
                             disabled
                             type="button"
+                            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-400"
+                          >
+                            Checking status…
+                          </button>
+                        ) : statusKind === "completed" ? (
+                          <div className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-100 px-5 py-3 text-sm font-semibold text-emerald-700">
+                            <FiCheck className="h-4 w-4" />
+                            Completed
+                          </div>
+                        ) : statusKind === "paused" ? (
+                          <button
+                            disabled
+                            type="button"
+                            className="mt-6 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-amber-100 px-5 py-3 text-sm font-semibold text-amber-700"
                           >
                             <FiAlertTriangle className="h-4 w-4" />
-                            Unauthorized
+                            Paused
                           </button>
                         ) : (
                           <button
@@ -636,7 +683,11 @@ function ExamDashboardInner() {
                             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                             type="button"
                           >
-                            Start Test
+                            {statusKind === "in_progress" ||
+                            statusKind === "disconnected" ||
+                            statusKind === "resume"
+                              ? "Resume Test"
+                              : "Start Test"}
                             <FiArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                           </button>
                         )}
