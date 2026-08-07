@@ -187,18 +187,18 @@ export default function TeamsPage() {
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6 lg:h-full lg:min-h-0">
       {/* Header section */}
-      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
+      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-5 shadow-soft shadow-slate-900/5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
               Structural Management
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">
               Teams & Operators
             </h1>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-bold text-slate-950">{totalTeams}</p>
+            <p className="text-2xl font-bold text-slate-950">{totalTeams}</p>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Operational Teams
             </p>

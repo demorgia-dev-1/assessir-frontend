@@ -16,6 +16,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import QuestionForm, { QuestionFormValues } from "@/components/QuestionForm";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import {
   downloadQuestionsTemplate,
   NosSheetInfo,
@@ -341,18 +342,18 @@ export default function QuestionsPage() {
 
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6 xl:h-full xl:min-h-0">
-      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
+      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-5 shadow-soft shadow-slate-900/5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
               Assessment Content
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">
               Questions
             </h1>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-bold text-slate-950">
+            <p className="text-2xl font-bold text-slate-950">
               {totalQuestions}
             </p>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
@@ -607,20 +608,21 @@ export default function QuestionsPage() {
                 Job Role For Imported Questions
               </label>
               <div className="flex items-stretch gap-2">
-                <select
-                  value={bulkJobRoleID}
-                  onChange={(event) =>
-                    handleBulkJobRoleChange(event.target.value)
-                  }
-                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
-                >
-                  <option value="">Select a job role</option>
-                  {jobRoles.map((jobRole) => (
-                    <option key={jobRole.id} value={String(jobRole.id)}>
-                      {jobRole.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex-1">
+                  <SearchableSelect
+                    value={bulkJobRoleID}
+                    onChange={handleBulkJobRoleChange}
+                    placeholder="Select a job role"
+                    searchPlaceholder="Search job roles…"
+                    options={[
+                      { value: "", label: "Select a job role" },
+                      ...jobRoles.map((jobRole) => ({
+                        value: String(jobRole.id),
+                        label: jobRole.name || `Job Role ${jobRole.id}`,
+                      })),
+                    ]}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleDownloadTemplate}

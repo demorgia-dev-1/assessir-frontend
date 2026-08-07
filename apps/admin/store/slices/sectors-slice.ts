@@ -16,6 +16,7 @@ export type GetSectorsParams = {
   page?: number;
   limit?: number;
   name?: string;
+  search?: string;
   sector_ids?: string;
 };
 

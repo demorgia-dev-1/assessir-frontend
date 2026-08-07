@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import Tooltip from "@/components/Tooltip";
 import {
@@ -10,6 +10,7 @@ import {
   fetchJobRoleById,
   clearError,
   clearSelectedJobRole,
+  GetJobRolesParams,
   JobRole,
 } from "@/store/slices/jobroles-slice";
 import { fetchSectors } from "@/store/slices/sectors-slice";
@@ -21,8 +22,10 @@ import {
   FiX,
   FiAlertTriangle,
   FiUploadCloud,
+  FiSearch,
 } from "react-icons/fi";
 import ImportJobRolesModal from "@/components/ImportJobRolesModal";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 export default function JobRolesPage() {
   const dispatch = useAppDispatch();
@@ -52,6 +55,10 @@ export default function JobRolesPage() {
   // Sector selection for bulk import
   const [sectorId, setSectorId] = useState("");
 
+  // List filters (server-side): sector_id + search on /jobroles
+  const [filterSectorId, setFilterSectorId] = useState("");
+  const [search, setSearch] = useState("");
+
   // Side Panel state controls (import & view modes)
   const [panelMode, setPanelMode] = useState<"import" | "view">("import");
 
@@ -75,6 +82,29 @@ export default function JobRolesPage() {
     dispatch(fetchSectors({ page: 1, limit: 1000 }));
   }, [dispatch]);
 
+  // List fetch params for the active sector + search filters.
+  const buildJobRoleParams = (page: number): GetJobRolesParams => {
+    const params: GetJobRolesParams = { page, limit: 10 };
+    if (filterSectorId) params.sector_id = filterSectorId;
+    const term = search.trim();
+    if (term) params.search = term;
+    return params;
+  };
+
+  // Debounced search — refetches page 1 (keeping the sector filter) ~400ms
+  // after typing stops. Skips the initial mount to avoid a duplicate load.
+  const didMountSearch = useRef(false);
+  useEffect(() => {
+    if (!didMountSearch.current) {
+      didMountSearch.current = true;
+      return;
+    }
+    const handle = setTimeout(() => {
+      dispatch(fetchJobRoles(buildJobRoleParams(1)));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [search]);
+
   // Handle Redux state errors
   useEffect(() => {
     if (error) {
@@ -84,7 +114,20 @@ export default function JobRolesPage() {
   }, [error, dispatch]);
 
   const handlePageChange = (page: number) => {
-    dispatch(fetchJobRoles({ page, limit: 10 }));
+    dispatch(fetchJobRoles(buildJobRoleParams(page)));
+  };
+
+  const handleFilterSectorChange = (value: string) => {
+    setFilterSectorId(value);
+    const term = search.trim();
+    dispatch(
+      fetchJobRoles({
+        page: 1,
+        limit: 10,
+        ...(value ? { sector_id: value } : {}),
+        ...(term ? { search: term } : {}),
+      })
+    );
   };
 
   // Get selected sector name for display
@@ -175,7 +218,7 @@ export default function JobRolesPage() {
       handleCloseEditModal();
 
       // Refresh list to pull updated nested models or references
-      dispatch(fetchJobRoles({ page: currentPage, limit: 10 }));
+      dispatch(fetchJobRoles(buildJobRoleParams(currentPage)));
     }
   };
 
@@ -209,19 +252,19 @@ export default function JobRolesPage() {
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6 lg:h-full lg:min-h-0">
       {/* Header section */}
-      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
+      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-5 shadow-soft shadow-slate-900/5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
               Operational Management
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">
               Job Roles
             </h1>
           </div>
           <div className="flex items-center gap-6">
             <div className="border-l border-slate-200 pl-6 text-right">
-              <p className="text-3xl font-bold text-slate-950">
+              <p className="text-2xl font-bold text-slate-950">
                 {totalJobRoles}
               </p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
@@ -397,6 +440,37 @@ export default function JobRolesPage() {
         <div className="flex flex-col gap-6">
           {panelMode === "import" && (
             <div className="glass-panel rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/5 animate-in fade-in duration-300">
+              {/* Filters */}
+              <p className="ml-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Filter
+              </p>
+              <div className="relative mt-2">
+                <FiSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search job roles…"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                />
+              </div>
+              <div className="mt-3">
+                <SearchableSelect
+                  value={filterSectorId}
+                  onChange={handleFilterSectorChange}
+                  searchPlaceholder="Search sectors…"
+                  options={[
+                    { value: "", label: "All sectors" },
+                    ...sectors.map((sector) => ({
+                      value: String(sector.id),
+                      label: sector.name,
+                    })),
+                  ]}
+                />
+              </div>
+
+              <div className="my-6 border-t border-slate-100" />
+
               <h2 className="text-lg font-semibold tracking-tight text-slate-950">
                 Bulk Import Job Roles
               </h2>
@@ -410,18 +484,19 @@ export default function JobRolesPage() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
                     Select Sector
                   </label>
-                  <select
+                  <SearchableSelect
                     value={sectorId}
-                    onChange={(e) => setSectorId(e.target.value)}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 appearance-none cursor-pointer"
-                  >
-                    <option value="">Select a Sector...</option>
-                    {sectors.map((sector) => (
-                      <option key={sector.id} value={sector.id}>
-                        {sector.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setSectorId}
+                    placeholder="Select a Sector..."
+                    searchPlaceholder="Search sectors…"
+                    options={[
+                      { value: "", label: "Select a Sector..." },
+                      ...sectors.map((sector) => ({
+                        value: String(sector.id),
+                        label: sector.name,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* Selected sector badge */}
@@ -725,19 +800,20 @@ export default function JobRolesPage() {
                 <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">
                   Sector
                 </label>
-                <select
+                <SearchableSelect
                   value={editSectorId}
-                  onChange={(e) => setEditSectorId(e.target.value)}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 cursor-pointer"
+                  onChange={setEditSectorId}
                   disabled={updating}
-                >
-                  <option value="">Select a Sector...</option>
-                  {sectors.map((sector) => (
-                    <option key={sector.id} value={sector.id}>
-                      {sector.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select a Sector..."
+                  searchPlaceholder="Search sectors…"
+                  options={[
+                    { value: "", label: "Select a Sector..." },
+                    ...sectors.map((sector) => ({
+                      value: String(sector.id),
+                      label: sector.name,
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Marks breakdown */}

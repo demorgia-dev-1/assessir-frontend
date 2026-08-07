@@ -132,6 +132,57 @@ export function formatHeartbeat(iso?: string | null): string {
   return date.toLocaleString();
 }
 
+// Absolute date-time WITH year (e.g. "17 Jul 2026, 12:59 PM") — schedule bounds
+// can span into a later year, so the year matters here unlike the heartbeat.
+function formatSchedule(iso?: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function BoolPill({ value }: { value?: boolean | null }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+        value
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-slate-200 bg-slate-50 text-slate-500"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          value ? "bg-emerald-500" : "bg-slate-400"
+        }`}
+      />
+      {value ? "Required" : "Off"}
+    </span>
+  );
+}
+
+function MetaField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white px-3 py-2.5">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <div className="mt-1 text-xs font-semibold text-slate-800">{children}</div>
+    </div>
+  );
+}
+
 export function TestDetailsSection({
   test,
   type,
@@ -144,6 +195,12 @@ export function TestDetailsSection({
   statusLoading?: boolean;
 }) {
   if (!test) return null;
+
+  const sectionCount = (test.sections || []).length;
+  const questionCount = (test.sections || []).reduce(
+    (sum: number, sec: any) => sum + (sec.questions?.length || 0),
+    0
+  );
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50/30 p-5 space-y-4">
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -175,6 +232,26 @@ export function TestDetailsSection({
             {test.time_in_minutes || 0} mins
           </span>
         </div>
+      </div>
+
+      {/* Schedule & configuration */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+        <MetaField label="Starts">{formatSchedule(test.start_date_time)}</MetaField>
+        <MetaField label="Ends">{formatSchedule(test.end_date_time)}</MetaField>
+        <MetaField label="Duration">{test.time_in_minutes || 0} min</MetaField>
+        <MetaField label="Structure">
+          {sectionCount} section{sectionCount === 1 ? "" : "s"} · {questionCount} question
+          {questionCount === 1 ? "" : "s"}
+        </MetaField>
+        <MetaField label="Authorization">
+          <BoolPill value={test.IsAuthorizationRequired} />
+        </MetaField>
+        <MetaField label="Onboarding selfie">
+          <BoolPill value={test.is_onboarding_selfie_required} />
+        </MetaField>
+        <MetaField label="Random evidence">
+          <BoolPill value={test.is_random_evidence_required} />
+        </MetaField>
       </div>
 
       <div className="space-y-4">

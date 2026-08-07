@@ -64,6 +64,8 @@ export type GetJobRolesParams = {
   page?: number;
   limit?: number;
   name?: string;
+  search?: string;
+  sector_id?: string | number;
 };
 
 type JobRoleApiShape = JobRole & {

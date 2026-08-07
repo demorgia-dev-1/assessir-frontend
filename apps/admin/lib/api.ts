@@ -4,9 +4,33 @@ import Cookies from "js-cookie";
 const AUTH_COOKIE_KEY = "assessir_admin_token";
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000/api/v1",
+  baseURL:
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000/api/v1",
   withCredentials: true,
 });
+
+function decodeBase64Url(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(
+    normalized.length + ((4 - (normalized.length % 4)) % 4),
+    "="
+  );
+  return atob(padded);
+}
+
+function isSessionDead(): boolean {
+  const token = Cookies.get(AUTH_COOKIE_KEY);
+  if (!token) return true;
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return true;
+    const claims = JSON.parse(decodeBase64Url(payload));
+    if (typeof claims?.exp !== "number") return false;
+    return claims.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
+}
 
 // Request interceptor to add auth token
 api.interceptors.request.use((config) => {
@@ -21,7 +45,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    if (status === 401) {
+    const isCancel = axios.isCancel(error) || error?.code === "ERR_CANCELED";
+
+    if (status === 401 && !isCancel && isSessionDead()) {
       try {
         Cookies.remove(AUTH_COOKIE_KEY);
         if (typeof window !== "undefined") {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import Tooltip from "@/components/Tooltip";
 import {
@@ -14,7 +14,14 @@ import {
   Sector,
 } from "@/store/slices/sectors-slice";
 import { toast } from "react-toastify";
-import { FiEye, FiEdit2, FiTrash2, FiX, FiAlertTriangle } from "react-icons/fi";
+import {
+  FiEye,
+  FiEdit2,
+  FiTrash2,
+  FiX,
+  FiAlertTriangle,
+  FiSearch,
+} from "react-icons/fi";
 
 export default function SectorsPage() {
   const dispatch = useAppDispatch();
@@ -34,6 +41,7 @@ export default function SectorsPage() {
     hasPrev,
   } = useAppSelector((state) => state.sectors);
 
+  const [search, setSearch] = useState("");
   const [newSectorName, setNewSectorName] = useState("");
 
   // Side Panel state controls (now simplified to create & view modes)
@@ -52,6 +60,20 @@ export default function SectorsPage() {
     dispatch(fetchSectors({ page: 1, limit: 10 }));
   }, [dispatch]);
 
+  // Debounced search — refetches page 1 ~400ms after typing stops.
+  const didMountSearch = useRef(false);
+  useEffect(() => {
+    if (!didMountSearch.current) {
+      didMountSearch.current = true;
+      return;
+    }
+    const handle = setTimeout(() => {
+      const term = search.trim();
+      dispatch(fetchSectors({ page: 1, limit: 10, ...(term ? { search: term } : {}) }));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [search]);
+
   useEffect(() => {
     if (error) {
       toast.error(error, { toastId: error });
@@ -60,7 +82,8 @@ export default function SectorsPage() {
   }, [error, dispatch]);
 
   const handlePageChange = (page: number) => {
-    dispatch(fetchSectors({ page, limit: 10 }));
+    const term = search.trim();
+    dispatch(fetchSectors({ page, limit: 10, ...(term ? { search: term } : {}) }));
   };
 
   const handleCreateSector = async (e: React.FormEvent) => {
@@ -143,18 +166,18 @@ export default function SectorsPage() {
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6 lg:h-full lg:min-h-0">
       {/* Header section */}
-      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
+      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-5 shadow-soft shadow-slate-900/5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
               Operational Management
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">
               Sectors
             </h1>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-bold text-slate-950">{totalSectors}</p>
+            <p className="text-2xl font-bold text-slate-950">{totalSectors}</p>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Registered Sectors
             </p>
@@ -312,6 +335,22 @@ export default function SectorsPage() {
         <div className="flex flex-col gap-6">
           {panelMode === "create" && (
             <div className="glass-panel rounded-[2rem] border border-white/80 p-7 shadow-soft shadow-slate-900/5 animate-in fade-in duration-300">
+              <label className="ml-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Search
+              </label>
+              <div className="relative mt-2">
+                <FiSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search sectors…"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                />
+              </div>
+
+              <div className="my-6 border-t border-slate-100" />
+
               <h2 className="text-lg font-semibold tracking-tight text-slate-950">
                 Create New Sector
               </h2>

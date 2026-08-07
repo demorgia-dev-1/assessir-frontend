@@ -19,6 +19,7 @@ import { fetchJobRoles, JobRoleNos } from "@/store/slices/jobroles-slice";
 import { fetchSectors } from "@/store/slices/sectors-slice";
 import { fetchTopics } from "@/store/slices/topics-slice";
 import api from "@/lib/api";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 /* ── Form types ──────────────────────────────────────── */
 
@@ -680,41 +681,41 @@ export default function BatchForm({
             />
           </Field>
           <Field label="Sector">
-            <select
+            <SearchableSelect
               value={form.sector_id}
-              onChange={(event) =>
+              onChange={(value) =>
                 setForm((current) => ({
                   ...current,
-                  sector_id: event.target.value,
+                  sector_id: value,
                   job_role_id: "",
                 }))
               }
-              className={INPUT_CLASS}
-            >
-              <option value="">Select sector</option>
-              {sectors.map((sector) => (
-                <option key={sector.id} value={sector.id}>
-                  {sector.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Select sector"
+              searchPlaceholder="Search sectors…"
+              options={[
+                { value: "", label: "Select sector" },
+                ...sectors.map((sector) => ({
+                  value: String(sector.id),
+                  label: sector.name,
+                })),
+              ]}
+            />
           </Field>
           <Field label="Job Role">
-            <select
+            <SearchableSelect
               value={form.job_role_id}
-              onChange={(event) =>
-                setFormField("job_role_id", event.target.value)
-              }
-              className={INPUT_CLASS}
+              onChange={(value) => setFormField("job_role_id", value)}
               disabled={!form.sector_id}
-            >
-              <option value="">Select job role</option>
-              {filteredJobRoles.map((jobRole) => (
-                <option key={jobRole.id} value={jobRole.id}>
-                  {jobRole.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Select job role"
+              searchPlaceholder="Search job roles…"
+              options={[
+                { value: "", label: "Select job role" },
+                ...filteredJobRoles.map((jobRole) => ({
+                  value: String(jobRole.id),
+                  label: jobRole.name || `Job Role ${jobRole.id}`,
+                })),
+              ]}
+            />
           </Field>
         </div>
 

@@ -135,6 +135,7 @@ export type GetBatchesParams = {
   page?: number;
   limit?: number;
   name?: string;
+  search?: string;
   job_role_id?: string | number;
 };
 

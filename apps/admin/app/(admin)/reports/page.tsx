@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   FiBarChart2,
-  FiChevronDown,
   FiSearch,
   FiUsers,
   FiRefreshCw,
@@ -12,11 +11,14 @@ import {
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchBatches } from "@/store/slices/batches-slice";
+import { fetchSectors } from "@/store/slices/sectors-slice";
 import {
   fetchBatchReport,
   clearReport,
   setReportBatchId,
 } from "@/store/slices/reports-slice";
+import api from "@/lib/api";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 /* ── Types & helpers ─────────────────────────────────── */
 
@@ -105,16 +107,72 @@ export default function ReportsPage() {
   const { batches, loading: batchesLoading } = useAppSelector(
     (state) => state.batches
   );
+  const { sectors } = useAppSelector((state) => state.sectors);
 
   const [search, setSearch] = useState("");
+  // Cascading filters: sector → job role → batch.
+  const [filterSectorId, setFilterSectorId] = useState("");
+  const [filterJobRoleId, setFilterJobRoleId] = useState("");
+  const [filterJobRoles, setFilterJobRoles] = useState<
+    Array<{ id: string | number; name?: string }>
+  >([]);
+  const [filterJobRolesLoading, setFilterJobRolesLoading] = useState(false);
 
   useEffect(() => {
     dispatch(fetchBatches({ page: 1, limit: 1000 }));
+    dispatch(fetchSectors({ page: 1, limit: 1000 }));
   }, [dispatch]);
+
+  // Load the sector's job roles for the cascade.
+  useEffect(() => {
+    if (!filterSectorId) {
+      setFilterJobRoles([]);
+      return;
+    }
+    let active = true;
+    setFilterJobRolesLoading(true);
+    api
+      .get("/jobroles", { params: { sector_id: filterSectorId, limit: 1000 } })
+      .then((res) => {
+        if (!active) return;
+        const data = res.data;
+        setFilterJobRoles(
+          Array.isArray(data) ? data : data?.jobroles || data?.jobRoles || []
+        );
+      })
+      .catch(() => {
+        if (active) setFilterJobRoles([]);
+      })
+      .finally(() => {
+        if (active) setFilterJobRolesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [filterSectorId]);
 
   const selectedBatch = batches.find(
     (b) => String(b.id) === String(selectedBatchId)
   );
+
+  const handleFilterSectorChange = (value: string) => {
+    setFilterSectorId(value);
+    setFilterJobRoleId("");
+    dispatch(clearReport());
+    dispatch(fetchBatches({ page: 1, limit: 1000 }));
+  };
+
+  const handleFilterJobRoleChange = (value: string) => {
+    setFilterJobRoleId(value);
+    dispatch(clearReport());
+    dispatch(
+      fetchBatches({
+        page: 1,
+        limit: 1000,
+        ...(value ? { job_role_id: value } : {}),
+      })
+    );
+  };
 
   const handleSelectBatch = (batchId: string) => {
     setSearch("");
@@ -160,19 +218,19 @@ export default function ReportsPage() {
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6">
       {/* Header */}
-      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
+      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-5 shadow-soft shadow-slate-900/5">
         <div className="flex flex-wrap items-center justify-between gap-5">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
               Insights & Results
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">
               Reports
             </h1>
           </div>
           <div className="flex items-center gap-4">
             <div className="border-l border-slate-200 pl-5 text-right">
-              <p className="text-3xl font-bold text-slate-950">
+              <p className="text-2xl font-bold text-slate-950">
                 {selectedBatch ? rows.length : "—"}
               </p>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
@@ -183,31 +241,76 @@ export default function ReportsPage() {
         </div>
       </header>
 
-      {/* Batch selector */}
-      <div className="glass-panel rounded-[2rem] border border-white/80 px-6 py-5 shadow-soft shadow-slate-900/5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="w-full sm:max-w-md">
+      {/* Filters: sector → job role → batch */}
+      <div className="glass-panel relative z-30 rounded-[2rem] border border-white/80 px-6 py-5 shadow-soft shadow-slate-900/5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+          {/* Sector */}
+          <div className="w-full lg:flex-1">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Sector
+            </p>
+            <SearchableSelect
+              value={filterSectorId}
+              onChange={handleFilterSectorChange}
+              searchPlaceholder="Search sectors…"
+              options={[
+                { value: "", label: "All sectors" },
+                ...sectors.map((sector) => ({
+                  value: String(sector.id),
+                  label: sector.name,
+                })),
+              ]}
+            />
+          </div>
+
+          {/* Job role */}
+          <div className="w-full lg:flex-1">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Job Role
+            </p>
+            <SearchableSelect
+              value={filterJobRoleId}
+              onChange={handleFilterJobRoleChange}
+              disabled={filterJobRolesLoading}
+              searchPlaceholder="Search job roles…"
+              options={[
+                {
+                  value: "",
+                  label: filterJobRolesLoading
+                    ? "Loading job roles…"
+                    : filterSectorId
+                    ? "All job roles in sector"
+                    : "All job roles",
+                },
+                ...filterJobRoles.map((jobRole) => ({
+                  value: String(jobRole.id),
+                  label: jobRole.name || `Job Role ${jobRole.id}`,
+                })),
+              ]}
+            />
+          </div>
+
+          {/* Batch */}
+          <div className="w-full lg:flex-1">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Batch
             </p>
-            <div className="relative">
-              <select
-                value={selectedBatchId ? String(selectedBatchId) : ""}
-                onChange={(e) => handleSelectBatch(e.target.value)}
-                disabled={batchesLoading}
-                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white py-3 pl-4 pr-10 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">
-                  {batchesLoading ? "Loading batches…" : "Select a batch"}
-                </option>
-                {batches.map((batch) => (
-                  <option key={batch.id} value={String(batch.id)}>
-                    #{batch.id} — {batch.name || `Batch ${batch.id}`}
-                  </option>
-                ))}
-              </select>
-              <FiChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            </div>
+            <SearchableSelect
+              value={selectedBatchId ? String(selectedBatchId) : ""}
+              onChange={handleSelectBatch}
+              disabled={batchesLoading}
+              searchPlaceholder="Search batches…"
+              options={[
+                {
+                  value: "",
+                  label: batchesLoading ? "Loading batches…" : "Select a batch",
+                },
+                ...batches.map((batch) => ({
+                  value: String(batch.id),
+                  label: `#${batch.id} — ${batch.name || `Batch ${batch.id}`}`,
+                })),
+              ]}
+            />
           </div>
 
           {selectedBatch && (
@@ -223,7 +326,7 @@ export default function ReportsPage() {
                 )
               }
               disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
             >
               <FiRefreshCw
                 className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}

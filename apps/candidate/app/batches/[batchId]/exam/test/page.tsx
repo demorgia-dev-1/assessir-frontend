@@ -83,23 +83,17 @@ function ExamTestInner() {
     isInitialized,
   } = useAppSelector((state) => state.auth);
 
-  // Decrypt test info from URL
   const testInfo = useMemo<TestInfo | null>(() => {
     const encrypted = searchParams.get("data");
     if (!encrypted) return null;
     return decryptData<TestInfo>(encrypted);
   }, [searchParams]);
 
-  // Per-exam token issued by the start endpoint. Sent as `x-testtaker-token` on
-  // every exam request (get question, submit answer, end test, evidence upload).
   const testTakerHeaders = useMemo(
     () => ({ "x-testtaker-token": testInfo?.testTakerToken ?? "" }),
     [testInfo]
   );
 
-  // Shared config for every exam request: sends the test-taker token and opts
-  // out of the global 401 auto-logout so a failing exam call surfaces its
-  // response here instead of bouncing the candidate to the login page.
   const examRequestConfig = useMemo(
     () => ({ headers: testTakerHeaders, skipAuthRedirect: true } as any),
     [testTakerHeaders]
@@ -138,18 +132,14 @@ function ExamTestInner() {
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
 
-  // Track question start time for answer submission
   const questionStartTimeRef = useRef<string>(new Date().toISOString());
 
-  // Answers State: maps question ID to selected option index or string text response
   const [answers, setAnswers] = useState<Record<number, number | string>>({});
 
-  // Question Status: 'unvisited' | 'visited' | 'answered' | 'marked'
   const [statuses, setStatuses] = useState<
     Record<number, "unvisited" | "visited" | "answered" | "marked">
   >({});
 
-  // Initialize statuses when questionRefs become available
   useEffect(() => {
     if (questionRefs.length === 0) return;
     setStatuses((prev) => {
@@ -165,7 +155,6 @@ function ExamTestInner() {
     });
   }, [questionRefs]);
 
-  // Save answers to localStorage to prevent data loss on reload
   useEffect(() => {
     if (testInfo) {
       localStorage.setItem(
@@ -175,7 +164,6 @@ function ExamTestInner() {
     }
   }, [answers, batchId, testInfo]);
 
-  // Fetch question when currentIdx changes
   useEffect(() => {
     const ref = questionRefs[currentIdx];
     if (!ref || !testInfo || questionsCache[ref.questionId]) return;
@@ -203,9 +191,7 @@ function ExamTestInner() {
           message: err?.message,
         });
         toast.error(
-          `Failed to load question (status ${
-            err?.response?.status ?? "?"
-          }). ${
+          `Failed to load question (status ${err?.response?.status ?? "?"}). ${
             err?.response?.data?.error ||
             err?.response?.data?.message ||
             err?.message ||
@@ -216,14 +202,19 @@ function ExamTestInner() {
       .finally(() => {
         setIsLoadingQuestion(false);
       });
-  }, [currentIdx, questionRefs, testInfo, batchId, examRequestConfig, questionsCache]);
+  }, [
+    currentIdx,
+    questionRefs,
+    testInfo,
+    batchId,
+    examRequestConfig,
+    questionsCache,
+  ]);
 
-  // Reset start time when navigating to a new question
   useEffect(() => {
     questionStartTimeRef.current = new Date().toISOString();
   }, [currentIdx]);
 
-  // Timer State (derived from test duration)
   const [timeLeft, setTimeLeft] = useState<number>(
     () => (testInfo?.timeInMinutes ?? 30) * 60
   );
@@ -294,8 +285,6 @@ function ExamTestInner() {
     stream: aiStream,
   } = useAiProctoring(aiEnabled);
 
-  // ── Random evidence capture (video chunks only) ──────────
-  // Reuses the proctoring camera stream and uploads video evidence to the backend.
   const evidenceRequired = !!testInfo?.isRandomEvidenceRequired;
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
@@ -303,7 +292,6 @@ function ExamTestInner() {
   const uploadEvidence = useCallback(
     async (blob: Blob, fileName: string, evType: "video") => {
       try {
-        // 1. Ask the API for a presigned S3 URL for this file.
         const res = await api.post(
           `/batches/${batchId}/exam/upload-evidence?fileName=${encodeURIComponent(
             fileName
@@ -314,7 +302,6 @@ function ExamTestInner() {
         const presignedUrl: string | undefined = res.data?.url;
         if (!presignedUrl) return;
 
-        // 2. PUT the blob straight to S3 (no size limit on our API server).
         const putRes = await fetch(presignedUrl, {
           method: "PUT",
           body: blob,
@@ -344,7 +331,6 @@ function ExamTestInner() {
       ? "video/webm"
       : "video/mp4";
     try {
-      // Keep the bitrate modest so evidence clips stay lightweight.
       const recorder = new MediaRecorder(aiStream, {
         mimeType,
         videoBitsPerSecond: 500_000,
@@ -367,21 +353,19 @@ function ExamTestInner() {
     }
   }, [aiStream, uploadEvidence]);
 
-  // Record and upload video in 60s chunks.
   useEffect(() => {
     if (!evidenceRequired || !aiStream) return;
     startVideoChunk();
     const id = setInterval(() => {
       stopCurrentVideoRecording();
       setTimeout(startVideoChunk, 200);
-    }, 60_000);
+    }, 10_000);
     return () => {
       clearInterval(id);
       stopCurrentVideoRecording();
     };
   }, [evidenceRequired, aiStream, startVideoChunk, stopCurrentVideoRecording]);
 
-  // Submit a single answer to the API
   const submitAnswer = useCallback(
     async (questionId: number, answer: string) => {
       if (!testInfo) return;
@@ -419,7 +403,6 @@ function ExamTestInner() {
     [batchId, testInfo, questionRefs]
   );
 
-  // Submit pending text answer before navigation
   const submitPendingTextAnswer = useCallback(() => {
     const ref = questionRefs[currentIdx];
     if (!ref) return;
@@ -511,8 +494,7 @@ function ExamTestInner() {
     }
 
     submitPendingTextAnswer();
-    // Evidence capture stops automatically when the exam completes (the
-    // proctoring stream is torn down, and the capture effects clean up).
+
     setIsSubmittingApi(true);
     setIsSubmitModalOpen(false);
 
@@ -547,7 +529,6 @@ function ExamTestInner() {
   const allQuestionsAttempted =
     questionRefs.length > 0 && answeredCount === questionRefs.length;
 
-  // Determine the next available test after current one from the logged-in batch.
   const nextTestLabel = useMemo(() => {
     const batch = authBatch as BatchInfo | null;
     if (!batch) return null;
@@ -560,8 +541,6 @@ function ExamTestInner() {
   }, [authBatch, testType]);
 
   const goToDashboard = () => {
-    // Mark this test submitted in the persisted exam statuses, then do a full
-    // navigation so the store re-initializes and the dashboard reflects it.
     try {
       const stored = sessionStorage.getItem("candidate_exam_statuses");
       const statuses = stored ? JSON.parse(stored) : {};
@@ -574,7 +553,6 @@ function ExamTestInner() {
     window.location.href = `/batches/${batchId}/exam`;
   };
 
-  // Render Completed View
   if (isExamCompleted) {
     return (
       <main className="relative flex min-h-screen items-center justify-center p-6 overflow-hidden">
@@ -667,7 +645,7 @@ function ExamTestInner() {
 
           <div className="flex items-center justify-between gap-3 sm:gap-6">
             {/* AI Proctoring status */}
-            <div
+            {/* <div
               className={`hidden sm:flex items-center gap-2 px-3.5 py-2 rounded-2xl border text-xs font-bold transition ${
                 aiStatus === "active"
                   ? aiViolations > 0
@@ -701,7 +679,7 @@ function ExamTestInner() {
                   ? "AI Off"
                   : "AI"}
               </span>
-            </div>
+            </div> */}
 
             {/* Countdown Clock */}
             <div

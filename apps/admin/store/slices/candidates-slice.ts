@@ -2,11 +2,27 @@ import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { toast } from "react-toastify";
 import api from "@/lib/api";
 
+export type CandidateSession = {
+  id: string | number;
+  candidate_id?: string | number;
+  test_id?: string | number;
+  session_status?: string | null;
+  test_type?: string | null;
+  started_at?: string | null;
+  active_started_at?: string | null;
+  completed_at?: string | null;
+  last_heartbeat?: string | null;
+  expires_at?: string | null;
+  duration_in_min?: number | null;
+  consumed_duration_sec?: number | null;
+};
+
 export type Candidate = {
   id?: string | number;
   enrollment_no: string;
   password: string;
   batch_id?: string | number;
+  sessions?: CandidateSession[];
   theory_exam_status?: string | null;
   practical_exam_status?: string | null;
   viva_exam_status?: string | null;
@@ -107,6 +123,27 @@ function getErrorMessage(error: any, fallback: string) {
   return typeof message === "string" ? message : String(message);
 }
 
+function normalizeSessions(raw: any): CandidateSession[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((session: any) => ({
+      id: session.id ?? session.ID,
+      candidate_id: session.candidate_id ?? session.CandidateID,
+      test_id: session.test_id ?? session.TestID,
+      session_status: session.session_status ?? session.SessionStatus ?? null,
+      test_type: session.test_type ?? session.TestType ?? null,
+      started_at: session.started_at ?? session.StartedAt ?? null,
+      active_started_at: session.active_started_at ?? session.ActiveStartedAt ?? null,
+      completed_at: session.completed_at ?? session.CompletedAt ?? null,
+      last_heartbeat: session.last_heartbeat ?? session.LastHeartbeat ?? null,
+      expires_at: session.expires_at ?? session.ExpiresAt ?? null,
+      duration_in_min: session.duration_in_min ?? session.DurationInMin ?? null,
+      consumed_duration_sec:
+        session.consumed_duration_sec ?? session.ConsumedDurationSec ?? null,
+    }))
+    .filter((session: CandidateSession) => session.id !== undefined && session.id !== null);
+}
+
 /**
  * Normalize a raw candidate from the API.
  * The backend returns PascalCase keys (EnrollmentNo, Password, BatchID)
@@ -118,6 +155,7 @@ function normalizeCandidate(raw: any): Candidate {
     enrollment_no: raw.enrollment_no ?? raw.EnrollmentNo ?? "",
     password: raw.password ?? raw.Password ?? "",
     batch_id: raw.batch_id ?? raw.BatchID ?? raw.batchId,
+    sessions: normalizeSessions(raw.sessions ?? raw.Sessions),
     theory_exam_status: raw.theory_exam_status ?? null,
     practical_exam_status: raw.practical_exam_status ?? null,
     viva_exam_status: raw.viva_exam_status ?? null,

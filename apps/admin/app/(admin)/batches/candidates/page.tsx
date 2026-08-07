@@ -18,6 +18,7 @@ import {
   FiUploadCloud,
   FiUserCheck,
   FiUsers,
+  FiVideo,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
@@ -898,6 +899,24 @@ function BatchCandidatesInner() {
                                   Resume
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  router.push(
+                                    `/batches/candidates/${cand.id}/evidences?batchId=${batchId}`
+                                  )
+                                }
+                                disabled={!(cand.sessions && cand.sessions.length)}
+                                title={
+                                  cand.sessions && cand.sessions.length
+                                    ? "View evidences"
+                                    : "No sessions recorded yet"
+                                }
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-indigo-600 disabled:opacity-40"
+                              >
+                                <FiVideo className="h-3.5 w-3.5" />
+                                Evidences
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => setResetCandidateId(cand.id!)}

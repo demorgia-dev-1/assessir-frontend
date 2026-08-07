@@ -1,7 +1,14 @@
 // @ts-nocheck
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -16,6 +23,7 @@ import {
   FiPlay,
   FiPause,
   FiPlus,
+  FiSearch,
   FiTrash2,
   FiUploadCloud,
   FiX,
@@ -38,6 +46,7 @@ import {
   BatchQuestionType,
   BatchSectionType,
   BatchTestRequest,
+  GetBatchesParams,
   clearBatchError,
   clearSelectedBatch,
   createBatches,
@@ -73,6 +82,7 @@ import { fetchSectors } from "@/store/slices/sectors-slice";
 import { fetchTopics } from "@/store/slices/topics-slice";
 import api from "@/lib/api";
 import Tooltip from "@/components/Tooltip";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 type PcForm = {
   topic_id: string;
@@ -596,6 +606,15 @@ export default function BatchesPage() {
   // test in the structure (test info) tab.
   const [testStatuses, setTestStatuses] = useState<Record<string, string>>({});
   const [testStatusLoading, setTestStatusLoading] = useState(false);
+  // List filters — sector narrows the job-role dropdown (via /jobroles?sector_id),
+  // and the chosen job role filters the batch list (via /batches?job_role_id).
+  const [filterSectorId, setFilterSectorId] = useState("");
+  const [filterJobRoleId, setFilterJobRoleId] = useState("");
+  const [search, setSearch] = useState("");
+  const [filterJobRoles, setFilterJobRoles] = useState<
+    Array<{ id: string | number; name?: string }>
+  >([]);
+  const [filterJobRolesLoading, setFilterJobRolesLoading] = useState(false);
   const attendanceTestOptions = useMemo(
     () => getAttendanceTestOptions(selectedBatch),
     [selectedBatch]
@@ -607,6 +626,59 @@ export default function BatchesPage() {
     dispatch(fetchJobRoles({ page: 1, limit: 1000 }));
     dispatch(fetchTopics({ page: 1, limit: 1000 }));
   }, [dispatch]);
+
+  // Debounced batch search — refetches page 1 (keeping the job-role filter)
+  // ~400ms after the admin stops typing. Skips the initial mount so it doesn't
+  // duplicate the first load.
+  const didMountSearch = useRef(false);
+  useEffect(() => {
+    if (!didMountSearch.current) {
+      didMountSearch.current = true;
+      return;
+    }
+    const handle = setTimeout(() => {
+      const term = search.trim();
+      dispatch(
+        fetchBatches({
+          page: 1,
+          limit: 10,
+          ...(filterJobRoleId ? { job_role_id: filterJobRoleId } : {}),
+          ...(term ? { search: term } : {}),
+        })
+      );
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  // Load the sector's job roles for the list filter (kept out of the shared
+  // jobRoles redux state so the create/edit modal's full list stays intact).
+  useEffect(() => {
+    if (!filterSectorId) {
+      setFilterJobRoles([]);
+      return;
+    }
+    let active = true;
+    setFilterJobRolesLoading(true);
+    api
+      .get("/jobroles", { params: { sector_id: filterSectorId, limit: 1000 } })
+      .then((res) => {
+        if (!active) return;
+        const data = res.data;
+        const list = Array.isArray(data)
+          ? data
+          : data?.jobroles || data?.jobRoles || [];
+        setFilterJobRoles(list);
+      })
+      .catch(() => {
+        if (active) setFilterJobRoles([]);
+      })
+      .finally(() => {
+        if (active) setFilterJobRolesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [filterSectorId]);
 
   useEffect(() => {
     if (form.job_role_id && modalMode) {
@@ -869,8 +941,43 @@ export default function BatchesPage() {
     });
   }, [form.sections, modalMode, selectedNosList]);
 
+  // Batch fetch params for the current list filter — used by paging & refresh
+  // so the active job-role filter survives page changes and mutations.
+  const buildBatchParams = (page: number): GetBatchesParams => {
+    const params: GetBatchesParams = { page, limit: 10 };
+    if (filterJobRoleId) params.job_role_id = filterJobRoleId;
+    const term = search.trim();
+    if (term) params.search = term;
+    return params;
+  };
+
   const refreshBatches = () => {
-    dispatch(fetchBatches({ page: currentPage, limit: 10 }));
+    dispatch(fetchBatches(buildBatchParams(currentPage)));
+  };
+
+  const handleFilterSectorChange = (value: string) => {
+    setFilterSectorId(value);
+    // Clearing the job-role filter resets the list back to all batches.
+    setFilterJobRoleId("");
+    dispatch(fetchBatches({ page: 1, limit: 10 }));
+  };
+
+  const handleFilterJobRoleChange = (value: string) => {
+    setFilterJobRoleId(value);
+    dispatch(
+      fetchBatches({
+        page: 1,
+        limit: 10,
+        ...(value ? { job_role_id: value } : {}),
+      })
+    );
+  };
+
+  const clearFilters = () => {
+    setFilterSectorId("");
+    setFilterJobRoleId("");
+    setSearch("");
+    dispatch(fetchBatches({ page: 1, limit: 10 }));
   };
 
   const handleCopyExamLink = async (batchId: string | number) => {
@@ -1410,18 +1517,18 @@ export default function BatchesPage() {
 
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-700 flex-col gap-6 lg:h-full lg:min-h-0">
-      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-8 shadow-soft shadow-slate-900/5">
+      <header className="glass-panel rounded-[2rem] border border-white/80 px-8 py-5 shadow-soft shadow-slate-900/5">
         <div className="flex flex-wrap items-center justify-between gap-5">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
               Assessment Delivery
             </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-slate-950">
               Batches
             </h1>
           </div>
           <div className="border-l border-slate-200 pl-5 text-right">
-            <p className="text-3xl font-bold text-slate-950">{totalBatches}</p>
+            <p className="text-2xl font-bold text-slate-950">{totalBatches}</p>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
               Registered Batches
             </p>
@@ -1608,7 +1715,7 @@ export default function BatchesPage() {
               <button
                 disabled={!hasPrev || loading}
                 onClick={() =>
-                  dispatch(fetchBatches({ page: currentPage - 1, limit: 10 }))
+                  dispatch(fetchBatches(buildBatchParams(currentPage - 1)))
                 }
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1617,7 +1724,7 @@ export default function BatchesPage() {
               <button
                 disabled={!hasNext || loading}
                 onClick={() =>
-                  dispatch(fetchBatches({ page: currentPage + 1, limit: 10 }))
+                  dispatch(fetchBatches(buildBatchParams(currentPage + 1)))
                 }
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1629,18 +1736,89 @@ export default function BatchesPage() {
         </div>
         {/* RIGHT PANEL — Actions */}
         <div className="glass-panel flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 shadow-soft shadow-slate-900/5">
-          <div className="border-b border-slate-100 px-6 py-5">
-            <h2 className="text-sm font-bold text-slate-950">Batch Actions</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Create a new batch or bulk import from Excel.
+          <div className="border-b border-slate-100 px-6 py-4">
+            <h2 className="text-sm font-bold text-slate-950">
+              Filters &amp; Actions
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Search, filter, or create batches.
             </p>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-6">
-            <div className="flex flex-col gap-3">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
+            {/* Filters */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Filter
+                </p>
+                {(filterSectorId || filterJobRoleId || search) && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-[11px] font-semibold text-slate-500 transition hover:text-slate-900"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search batches…"
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
+                />
+              </div>
+
+              <SearchableSelect
+                value={filterSectorId}
+                onChange={handleFilterSectorChange}
+                searchPlaceholder="Search sectors…"
+                options={[
+                  { value: "", label: "All sectors" },
+                  ...sectors.map((sector) => ({
+                    value: String(sector.id),
+                    label: sector.name,
+                  })),
+                ]}
+              />
+
+              <SearchableSelect
+                value={filterJobRoleId}
+                onChange={handleFilterJobRoleChange}
+                disabled={filterJobRolesLoading}
+                searchPlaceholder="Search job roles…"
+                options={[
+                  {
+                    value: "",
+                    label: filterJobRolesLoading
+                      ? "Loading job roles…"
+                      : filterSectorId
+                      ? "All job roles in sector"
+                      : "All job roles",
+                  },
+                  ...(filterSectorId ? filterJobRoles : jobRoles).map(
+                    (jobRole) => ({
+                      value: String(jobRole.id),
+                      label: jobRole.name || `Job Role ${jobRole.id}`,
+                    })
+                  ),
+                ]}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-3 border-t border-slate-100 pt-5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Actions
+              </p>
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
                   <FiPlus className="h-5 w-5" />
@@ -1658,15 +1836,13 @@ export default function BatchesPage() {
               <button
                 type="button"
                 onClick={() => setBulkOpen(true)}
-                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-left transition hover:border-slate-300 hover:bg-slate-50"
+                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-left transition hover:border-slate-300 hover:bg-slate-50"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
                   <FiUploadCloud className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">
-                    Bulk Upload
-                  </p>
+                  <p className="text-sm font-bold text-slate-900">Bulk Upload</p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Import multiple batches from an .xlsx file.
                   </p>
@@ -1761,36 +1937,38 @@ export default function BatchesPage() {
 
             <div className="mt-6 grid gap-4">
               <Field label="Sector">
-                <select
+                <SearchableSelect
                   value={bulkSectorId}
-                  onChange={(event) => {
-                    setBulkSectorId(event.target.value);
+                  onChange={(value) => {
+                    setBulkSectorId(value);
                     setBulkJobRoleId("");
                   }}
-                  className={INPUT_CLASS}
-                >
-                  <option value="">Select sector</option>
-                  {sectors.map((sector) => (
-                    <option key={sector.id} value={sector.id}>
-                      {sector.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select sector"
+                  searchPlaceholder="Search sectors…"
+                  options={[
+                    { value: "", label: "Select sector" },
+                    ...sectors.map((sector) => ({
+                      value: String(sector.id),
+                      label: sector.name,
+                    })),
+                  ]}
+                />
               </Field>
               <Field label="Job Role">
-                <select
+                <SearchableSelect
                   value={bulkJobRoleId}
-                  onChange={(event) => setBulkJobRoleId(event.target.value)}
-                  className={INPUT_CLASS}
+                  onChange={(value) => setBulkJobRoleId(value)}
                   disabled={!bulkSectorId}
-                >
-                  <option value="">Select job role</option>
-                  {filteredBulkJobRoles.map((jobRole) => (
-                    <option key={jobRole.id} value={jobRole.id}>
-                      {jobRole.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select job role"
+                  searchPlaceholder="Search job roles…"
+                  options={[
+                    { value: "", label: "Select job role" },
+                    ...filteredBulkJobRoles.map((jobRole) => ({
+                      value: String(jobRole.id),
+                      label: jobRole.name || `Job Role ${jobRole.id}`,
+                    })),
+                  ]}
+                />
               </Field>
               <div
                 className={`grid ${

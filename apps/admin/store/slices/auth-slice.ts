@@ -91,8 +91,15 @@ export const loginAdminAction = createAsyncThunk<
       token
     };
   } catch (error: any) {
+    const data = error.response?.data;
+    const serverMessage =
+      typeof data === "string"
+        ? data
+        : data?.error || data?.message || data?.errors;
     return rejectWithValue(
-      error.response?.data?.message || error.message || "Unable to sign in right now."
+      (typeof serverMessage === "string" && serverMessage) ||
+        error.message ||
+        "Unable to sign in right now."
     );
   }
 });
