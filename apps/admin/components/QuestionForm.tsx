@@ -13,6 +13,13 @@ import type {
 } from "@/store/slices/questions-slice";
 import { RichTextArea, RichTextToolbar } from "@/components/RichTextEditor";
 import api from "@/lib/api";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchSectors } from "@/store/slices/sectors-slice";
+import { SearchableSelect } from "@/components/SearchableSelect";
+
+// Compact combobox trigger matching the small selects in this form.
+const COMPACT_TRIGGER =
+  "flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
 
 export type QuestionFormValues = {
   text: string;
@@ -120,6 +127,31 @@ export default function QuestionForm({
     Record<string, JobRoleNos[]>
   >({});
   const [nosLoading, setNosLoading] = useState(false);
+
+  const dispatch = useAppDispatch();
+  const { sectors } = useAppSelector((state) => state.sectors);
+  const [sectorId, setSectorId] = useState("");
+
+  useEffect(() => {
+    dispatch(fetchSectors({ page: 1, limit: 1000 }));
+  }, [dispatch]);
+
+  // Preselect the sector from the current job role (edit mode / navigation)
+  // so the job-role dropdown is correctly scoped without extra clicks.
+  useEffect(() => {
+    if (!value.jobRoleID || sectorId) return;
+    const jobRole = jobRoles.find(
+      (item) => String(item.id) === String(value.jobRoleID)
+    );
+    if (jobRole && jobRole.sector_id != null && String(jobRole.sector_id) !== "") {
+      setSectorId(String(jobRole.sector_id));
+    }
+  }, [value.jobRoleID, jobRoles, sectorId]);
+
+  // Job roles are only selectable once a sector is chosen.
+  const sectorJobRoles = sectorId
+    ? jobRoles.filter((item) => String(item.sector_id) === sectorId)
+    : [];
 
   useEffect(() => {
     setEditorTarget("question");
@@ -275,7 +307,7 @@ export default function QuestionForm({
         onSubmit={onSubmit}
         className="mt-4 flex flex-col gap-3.5 flex-1 min-h-0 overflow-hidden"
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 shrink-0">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 shrink-0">
           <div className="flex flex-col gap-1">
             <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
               Question Type
@@ -311,26 +343,52 @@ export default function QuestionForm({
 
           <div className="flex flex-col gap-1">
             <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+              Sector
+            </label>
+            <SearchableSelect
+              value={sectorId}
+              onChange={(next) => {
+                setSectorId(next);
+                // Changing sector clears the dependent job role + NOS.
+                onChange({ ...value, jobRoleID: "", nosID: "" });
+              }}
+              placeholder="Select a sector"
+              searchPlaceholder="Search sectors…"
+              triggerClassName={COMPACT_TRIGGER}
+              options={[
+                { value: "", label: "Select a sector" },
+                ...sectors.map((sector) => ({
+                  value: String(sector.id),
+                  label: sector.name,
+                })),
+              ]}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="ml-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
               Job Role
             </label>
-            <select
+            <SearchableSelect
               value={value.jobRoleID}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  jobRoleID: event.target.value,
-                  nosID: "",
-                })
+              onChange={(next) =>
+                onChange({ ...value, jobRoleID: next, nosID: "" })
               }
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-900/5"
-            >
-              <option value="">Select a job role</option>
-              {jobRoles.map((jobRole) => (
-                <option key={jobRole.id} value={String(jobRole.id)}>
-                  {jobRole.name}
-                </option>
-              ))}
-            </select>
+              disabled={!sectorId}
+              placeholder={sectorId ? "Select a job role" : "Select a sector first"}
+              searchPlaceholder="Search job roles…"
+              triggerClassName={COMPACT_TRIGGER}
+              options={[
+                {
+                  value: "",
+                  label: sectorId ? "Select a job role" : "Select a sector first",
+                },
+                ...sectorJobRoles.map((jobRole) => ({
+                  value: String(jobRole.id),
+                  label: jobRole.name || `Job Role ${jobRole.id}`,
+                })),
+              ]}
+            />
           </div>
 
           <div className="flex flex-col gap-1">

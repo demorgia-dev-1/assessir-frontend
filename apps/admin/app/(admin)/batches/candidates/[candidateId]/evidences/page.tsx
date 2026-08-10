@@ -6,6 +6,7 @@ import {
   FiActivity,
   FiAlertTriangle,
   FiArrowLeft,
+  FiImage,
   FiVideo,
 } from "react-icons/fi";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -127,7 +128,8 @@ function RecordingsPanel({
         setChunks(extractChunks(response.data));
       })
       .catch((err: any) => {
-        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError")
+          return;
         setError(
           err?.response?.data?.error ||
             err?.response?.data?.message ||
@@ -142,7 +144,10 @@ function RecordingsPanel({
     return (
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {[0, 1, 2].map((row) => (
-          <div key={row} className="aspect-video animate-pulse rounded-2xl bg-slate-100" />
+          <div
+            key={row}
+            className="aspect-video animate-pulse rounded-2xl bg-slate-100"
+          />
         ))}
       </div>
     );
@@ -160,7 +165,9 @@ function RecordingsPanel({
     return (
       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center">
         <FiVideo className="mx-auto mb-2 h-7 w-7 text-slate-400" />
-        <h5 className="text-sm font-bold text-slate-950">No recordings found</h5>
+        <h5 className="text-sm font-bold text-slate-950">
+          No recordings found
+        </h5>
         <p className="mx-auto mt-1 max-w-xs text-xs text-slate-500">
           This session has no video evidence available yet.
         </p>
@@ -168,7 +175,9 @@ function RecordingsPanel({
     );
   }
 
-  const startedAt = chunks[0]?.time ? formatDateTime(new Date(chunks[0].time).toISOString()) : null;
+  const startedAt = chunks[0]?.time
+    ? formatDateTime(new Date(chunks[0].time).toISOString())
+    : null;
 
   return (
     <div className="space-y-4">
@@ -177,7 +186,9 @@ function RecordingsPanel({
           {chunks.length} recording{chunks.length === 1 ? "" : "s"}
         </p>
         {startedAt && (
-          <span className="text-[11px] text-slate-400">Started {startedAt}</span>
+          <span className="text-[11px] text-slate-400">
+            Started {startedAt}
+          </span>
         )}
       </div>
 
@@ -225,6 +236,10 @@ type FrameScore = {
   reasons: string[];
   faceCount: number;
   suspicious: boolean;
+  // The frame image's object key exactly as returned by the report
+  // ("suspicious-activity/10/1786344839688/frame-8.jpg"); posted as-is to get a
+  // presigned URL.
+  objectKey: string | null;
 };
 
 type AiChunk = {
@@ -249,7 +264,9 @@ type AiReport = {
 
 // Turn a moderation label / reason code into a human phrase.
 function humanizeLabel(label: string): string {
-  return label.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return label
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 // The trailing numeric segment of an objectKey / messageId is the epoch-ms
@@ -275,13 +292,16 @@ function extractAiReport(data: any): AiReport {
         reasons: Array.isArray(frame?.reasons) ? frame.reasons : [],
         faceCount: Number(frame?.faceCount ?? 0),
         suspicious: Boolean(frame?.suspicious),
+        objectKey: frame?.objectKey ? String(frame.objectKey) : null,
       }));
 
       return {
         id: item?.messageId ?? item?.objectKey ?? String(index),
         time: timeFromKey(item?.objectKey ?? item?.messageId ?? ""),
         status: String(item?.status ?? "").toUpperCase(),
-        suspicious: Boolean(moderation?.suspicious ?? item?.status === "SUSPICIOUS"),
+        suspicious: Boolean(
+          moderation?.suspicious ?? item?.status === "SUSPICIOUS"
+        ),
         label: moderation?.label ?? null,
         reason: moderation?.reason ?? item?.reason ?? "",
         score: Number(moderation?.score ?? 0),
@@ -303,13 +323,127 @@ function extractAiReport(data: any): AiReport {
   });
 
   return {
-    suspicious: Boolean(root?.suspicious) || chunks.some((chunk) => chunk.suspicious),
+    suspicious:
+      Boolean(root?.suspicious) || chunks.some((chunk) => chunk.suspicious),
     jobCount: Number(root?.jobCount ?? chunks.length),
     suspiciousCount: chunks.filter((chunk) => chunk.suspicious).length,
     labelCounts,
     chunks,
     raw: root,
   };
+}
+
+// The presigned-URL endpoint returns URLs for the object_keys we posted. The
+// response shape isn't fixed, so accept an ordered `urls` array, an array of
+// {object_key,url} objects, or a plain key→url map.
+function mapPresignedUrls(
+  keys: string[],
+  data: any
+): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  if (!data) return out;
+
+  const list =
+    (Array.isArray(data) && data) ||
+    data.urls ||
+    data.data?.urls ||
+    data.presigned_urls ||
+    data.presignedUrls ||
+    null;
+
+  if (Array.isArray(list)) {
+    list.forEach((entry: any, index: number) => {
+      const url =
+        typeof entry === "string"
+          ? entry
+          : entry?.url ??
+            entry?.URL ??
+            entry?.signed_url ??
+            entry?.presigned_url ??
+            "";
+      const key =
+        (typeof entry === "object" &&
+          (entry?.object_key ?? entry?.objectKey ?? entry?.key)) ||
+        keys[index];
+      if (key && url) out[key] = url;
+    });
+    return out;
+  }
+
+  // key → url (or url[]) map, possibly nested under `data`.
+  const map = data.data ?? data;
+  if (map && typeof map === "object") {
+    keys.forEach((key) => {
+      const value = map[key];
+      if (typeof value === "string") {
+        out[key] = value;
+      } else if (Array.isArray(value)) {
+        out[key] = value.filter((item): item is string => typeof item === "string");
+      }
+    });
+  }
+  return out;
+}
+
+// The flagged frame images for one chunk, resolved from each frame's own
+// presigned URL.
+function SuspiciousFrames({
+  frames,
+  urls,
+  loading,
+}: {
+  frames: FrameScore[];
+  urls: Record<string, string | string[]>;
+  loading: boolean;
+}) {
+  const flagged = frames.filter((frame) => frame.suspicious && frame.objectKey);
+  if (!flagged.length) return null;
+
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+      {flagged.map((frame, index) => {
+        const raw = frame.objectKey ? urls[frame.objectKey] : undefined;
+        const url = Array.isArray(raw) ? raw[0] : raw;
+        return (
+          <a
+            key={`${frame.frame}-${index}`}
+            href={url || undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative block overflow-hidden rounded-xl border border-rose-200 bg-slate-100"
+            title={
+              frame.reasons.length
+                ? frame.reasons.map(humanizeLabel).join(", ")
+                : frame.frame
+            }
+          >
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={url}
+                alt={frame.frame}
+                loading="lazy"
+                className="aspect-video w-full object-cover transition group-hover:opacity-90"
+              />
+            ) : (
+              <div className="flex aspect-video w-full items-center justify-center">
+                {loading ? (
+                  <div className="h-full w-full animate-pulse bg-slate-200" />
+                ) : (
+                  <FiImage className="h-5 w-5 text-slate-400" />
+                )}
+              </div>
+            )}
+            {frame.reasons.length > 0 && (
+              <span className="absolute bottom-1 left-1 rounded-md bg-slate-950/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                {frame.reasons.map(humanizeLabel).join(", ")}
+              </span>
+            )}
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 // Small colour-coded strip of the 10 sampled frames for one chunk.
@@ -345,12 +479,17 @@ function SuspiciousPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [onlyFlagged, setOnlyFlagged] = useState(false);
+  const [frameUrls, setFrameUrls] = useState<
+    Record<string, string | string[]>
+  >({});
+  const [framesLoading, setFramesLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
     setOnlyFlagged(false);
+    setFrameUrls({});
     api
       .get(
         `/batches/${batchId}/candidates/${candidateId}/sessions/${sessionId}/ai-report`,
@@ -360,7 +499,8 @@ function SuspiciousPanel({
         setReport(extractAiReport(response.data));
       })
       .catch((err: any) => {
-        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError")
+          return;
         setError(
           err?.response?.data?.error ||
             err?.response?.data?.message ||
@@ -371,11 +511,52 @@ function SuspiciousPanel({
     return () => controller.abort();
   }, [batchId, candidateId, sessionId]);
 
+  // Once the report is in, fetch presigned URLs for every flagged frame,
+  // posting each frame's object key exactly as it came from the report.
+  useEffect(() => {
+    if (!report) return;
+    const keys = Array.from(
+      new Set(
+        report.chunks.flatMap((chunk) =>
+          chunk.frames
+            .filter((frame) => frame.suspicious && frame.objectKey)
+            .map((frame) => frame.objectKey as string)
+        )
+      )
+    );
+    if (!keys.length) {
+      setFrameUrls({});
+      return;
+    }
+
+    const controller = new AbortController();
+    setFramesLoading(true);
+    api
+      .post(
+        `/batches/${batchId}/candidates/${candidateId}/sessions/${sessionId}/evidence-presigned-urls`,
+        { object_keys: keys },
+        { signal: controller.signal }
+      )
+      .then((response) => {
+        setFrameUrls(mapPresignedUrls(keys, response.data));
+      })
+      .catch((err: any) => {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError")
+          return;
+        setFrameUrls({});
+      })
+      .finally(() => setFramesLoading(false));
+    return () => controller.abort();
+  }, [report, batchId, candidateId, sessionId]);
+
   if (loading) {
     return (
       <div className="space-y-3">
         {[0, 1, 2].map((row) => (
-          <div key={row} className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+          <div
+            key={row}
+            className="h-20 animate-pulse rounded-2xl bg-slate-100"
+          />
         ))}
       </div>
     );
@@ -417,7 +598,9 @@ function SuspiciousPanel({
         <div className="flex items-start gap-3">
           <span
             className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-              report.suspicious ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"
+              report.suspicious
+                ? "bg-rose-100 text-rose-600"
+                : "bg-emerald-100 text-emerald-600"
             }`}
           >
             {report.suspicious ? (
@@ -484,7 +667,9 @@ function SuspiciousPanel({
           <li
             key={chunk.id}
             className={`rounded-2xl border p-4 shadow-sm ${
-              chunk.suspicious ? "border-rose-200 bg-rose-50/40" : "border-slate-200 bg-white"
+              chunk.suspicious
+                ? "border-rose-200 bg-rose-50/40"
+                : "border-slate-200 bg-white"
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -522,7 +707,9 @@ function SuspiciousPanel({
             </div>
 
             {chunk.suspicious && chunk.reason && (
-              <p className="mt-2 text-xs leading-5 text-slate-600">{chunk.reason}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                {chunk.reason}
+              </p>
             )}
 
             {chunk.frames.length > 0 && (
@@ -533,6 +720,14 @@ function SuspiciousPanel({
                   {chunk.frames.length} frames flagged
                 </p>
               </div>
+            )}
+
+            {chunk.suspicious && (
+              <SuspiciousFrames
+                frames={chunk.frames}
+                urls={frameUrls}
+                loading={framesLoading}
+              />
             )}
           </li>
         ))}
@@ -556,7 +751,9 @@ function EvidencesInner() {
 
   const { candidates, loading } = useAppSelector((state) => state.candidates);
 
-  const [activeSessionId, setActiveSessionId] = useState<string | number | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<
+    string | number | null
+  >(null);
   const [tab, setTab] = useState<EvidenceTab>("recordings");
 
   useEffect(() => {
@@ -590,7 +787,9 @@ function EvidencesInner() {
               type="button"
               onClick={() =>
                 router.push(
-                  batchId ? `/batches/candidates?batchId=${batchId}` : "/batches"
+                  batchId
+                    ? `/batches/candidates?batchId=${batchId}`
+                    : "/batches"
                 )
               }
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
@@ -621,10 +820,12 @@ function EvidencesInner() {
       ) : !candidate ? (
         <div className="glass-panel rounded-[2rem] border border-white/80 p-10 text-center shadow-soft">
           <FiAlertTriangle className="mx-auto mb-2 h-7 w-7 text-amber-500" />
-          <h5 className="text-sm font-bold text-slate-950">Candidate not found</h5>
+          <h5 className="text-sm font-bold text-slate-950">
+            Candidate not found
+          </h5>
           <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
-            We couldn&apos;t find this candidate in the batch. Go back and open evidences
-            from the candidate list.
+            We couldn&apos;t find this candidate in the batch. Go back and open
+            evidences from the candidate list.
           </p>
         </div>
       ) : !sessions.length ? (
@@ -632,7 +833,8 @@ function EvidencesInner() {
           <FiVideo className="mx-auto mb-2 h-7 w-7 text-slate-400" />
           <h5 className="text-sm font-bold text-slate-950">No sessions yet</h5>
           <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500">
-            This candidate hasn&apos;t started any test, so there is no evidence to review.
+            This candidate hasn&apos;t started any test, so there is no evidence
+            to review.
           </p>
         </div>
       ) : (
