@@ -14,7 +14,6 @@ import {
   TestDetailsSection,
   canonicalExamStatus,
   getBatchJobRoleName,
-  getExamLoginUrl,
   getTestIdForType,
 } from "../batch-shared";
 
@@ -85,7 +84,7 @@ function BatchDetailsInner() {
     };
   }, [selectedBatch]);
 
-  const examUrl = selectedBatch ? getExamLoginUrl(selectedBatch.id) : "";
+  // const examUrl = selectedBatch ? getExamLoginUrl(selectedBatch.id) : "";
 
   return (
     <section className="flex animate-in fade-in slide-in-from-bottom-4 duration-500 flex-col gap-6">
@@ -134,12 +133,11 @@ function BatchDetailsInner() {
           <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
         ) : selectedBatch ? (
           <div className="space-y-5">
-            {/* Candidate Exam Link */}
-            <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
+            {/* <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.15em] text-sky-700 mb-2">
                 Candidate Exam Link
               </p>
-              <div className="flex items-center gap-2">
+             <div className="flex items-center gap-2">
                 <div className="flex-1 overflow-hidden rounded-xl border border-sky-200 bg-white px-3 py-2.5">
                   <p className="truncate text-xs font-mono text-slate-600">
                     {examUrl}
@@ -168,7 +166,7 @@ function BatchDetailsInner() {
                   Open
                 </a>
               </div>
-            </div>
+            </div> */}
 
             <div className="space-y-5">
               <TestDetailsSection

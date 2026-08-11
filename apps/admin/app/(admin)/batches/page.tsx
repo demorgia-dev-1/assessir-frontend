@@ -1652,14 +1652,16 @@ export default function BatchesPage() {
                             </button>
                           </Tooltip>
 
-                          <Tooltip label="Copy Exam Link">
-                            <button
-                              onClick={() => handleCopyExamLink(batch.id)}
-                              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
-                            >
-                              <FiCopy className="h-4.5 w-4.5" />
-                            </button>
-                          </Tooltip>
+                          {batch.is_published && (
+                            <Tooltip label="Copy Exam Link">
+                              <button
+                                onClick={() => handleCopyExamLink(batch.id)}
+                                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-sky-600"
+                              >
+                                <FiCopy className="h-4.5 w-4.5" />
+                              </button>
+                            </Tooltip>
+                          )}
 
                           {!batch.is_published && (
                             <Tooltip label="Publish Batch">

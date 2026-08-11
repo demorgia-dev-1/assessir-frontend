@@ -178,7 +178,9 @@ function MetaField({
       <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </p>
-      <div className="mt-1 text-xs font-semibold text-slate-800">{children}</div>
+      <div className="mt-1 text-xs font-semibold text-slate-800">
+        {children}
+      </div>
     </div>
   );
 }
@@ -236,11 +238,14 @@ export function TestDetailsSection({
 
       {/* Schedule & configuration */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-        <MetaField label="Starts">{formatSchedule(test.start_date_time)}</MetaField>
+        <MetaField label="Starts">
+          {formatSchedule(test.start_date_time)}
+        </MetaField>
         <MetaField label="Ends">{formatSchedule(test.end_date_time)}</MetaField>
         <MetaField label="Duration">{test.time_in_minutes || 0} min</MetaField>
         <MetaField label="Structure">
-          {sectionCount} section{sectionCount === 1 ? "" : "s"} · {questionCount} question
+          {sectionCount} section{sectionCount === 1 ? "" : "s"} ·{" "}
+          {questionCount} question
           {questionCount === 1 ? "" : "s"}
         </MetaField>
         <MetaField label="Authorization">
@@ -283,7 +288,10 @@ export function TestDetailsSection({
                       </div>
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <span className="inline-flex items-center rounded-md bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600 ring-1 ring-inset ring-slate-500/10 uppercase tracking-wide">
-                          {q.nos?.code || q.nos?.nos_code || q.nos_code || "NOS"}
+                          {q.nos?.code ||
+                            q.nos?.nos_code ||
+                            q.nos_code ||
+                            "NOS"}
                         </span>
                         <span className="text-[10px] font-bold text-slate-800">
                           {q.correct_mark ? `+${q.correct_mark}` : "0"} Marks
