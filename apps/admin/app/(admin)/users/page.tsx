@@ -30,6 +30,22 @@ export default function UsersPage() {
     hasPrev
   } = useAppSelector((state) => state.users);
   const { teams, loading: teamsLoading } = useAppSelector((state) => state.teams);
+  const { session } = useAppSelector((state) => state.auth);
+
+  // Managers can only create the roles below them; admins can create any role.
+  const currentRole = session?.role ?? "admin";
+  const roleOptions =
+    currentRole === "manager"
+      ? [
+          { value: "assessor", label: "Assessor" },
+          { value: "team_member", label: "Team Member" },
+        ]
+      : [
+          { value: "manager", label: "Manager" },
+          { value: "assessor", label: "Assessor" },
+          { value: "team_member", label: "Team Member" },
+          { value: "admin", label: "Admin" },
+        ];
 
   // Form states
   const [name, setName] = useState("");
@@ -340,10 +356,11 @@ export default function UsersPage() {
                     required
                   >
                     <option value="">Select a role</option>
-                    <option value="manager">Manager</option>
-                    <option value="assessor">Assessor</option>
-                    <option value="team_member">Team Member</option>
-                    <option value="admin">Admin</option>
+                    {roleOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

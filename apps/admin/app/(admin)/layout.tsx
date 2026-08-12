@@ -6,7 +6,15 @@ import { ReactNode, useEffect, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { initializeAuth, logoutAdminAction } from "@/store/slices/auth-slice";
 
-const navigationItems = [
+type NavigationItem = {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  // When set, only these roles see the item. Omitted means everyone sees it.
+  allowedRoles?: string[];
+};
+
+const navigationItems: NavigationItem[] = [
   {
     href: "/dashboard",
     label: "Dashboard",
@@ -152,6 +160,7 @@ const navigationItems = [
   {
     href: "/users",
     label: "Users",
+    allowedRoles: ["admin", "manager"],
     icon: (
       <svg
         aria-hidden="true"
@@ -170,6 +179,7 @@ const navigationItems = [
   {
     href: "/teams",
     label: "Teams",
+    allowedRoles: ["admin"],
     icon: (
       <svg
         aria-hidden="true"
@@ -222,6 +232,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [isAuthenticated, isInitialized, router]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Tokens without a role claim keep the historic "admin" assumption used by
+  // the role badge below.
+  const currentRole = session?.role ?? "admin";
+  const visibleNavigationItems = navigationItems.filter(
+    (item) => !item.allowedRoles || item.allowedRoles.includes(currentRole)
+  );
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -321,7 +338,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </div>
 
               <div className="mt-8 flex flex-1 flex-col gap-2">
-                {navigationItems.map((item) => {
+                {visibleNavigationItems.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <Link
@@ -383,7 +400,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="mt-8 flex flex-1 flex-col gap-2">
-              {navigationItems.map((item) => {
+              {visibleNavigationItems.map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <Link
