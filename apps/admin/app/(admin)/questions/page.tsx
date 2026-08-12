@@ -25,8 +25,12 @@ import {
 } from "@/lib/questions-import";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import Tooltip from "@/components/Tooltip";
-import { fetchJobRoles, JobRoleNos } from "@/store/slices/jobroles-slice";
-import api from "@/lib/api";
+import {
+  fetchJobRoleById,
+  fetchJobRoles,
+  JobRoleNos,
+} from "@/store/slices/jobroles-slice";
+import { fetchSectors } from "@/store/slices/sectors-slice";
 import {
   clearError,
   clearSelectedQuestion,
@@ -46,6 +50,41 @@ import {
   stripHtml,
   validateForm,
 } from "./question-utils";
+
+type NosApiShape = JobRoleNos & {
+  Code?: string;
+  NOSCode?: string;
+  NOS_CODE?: string;
+  nos_name?: string;
+  NOSName?: string;
+  NOS_NAME?: string;
+  Name?: string;
+};
+
+// GET /jobroles/{id} has shipped the job role at a few different keys; accept
+// whichever one carries the NOS list.
+type JobRoleDetailResponse = {
+  nos_list?: NosApiShape[];
+  nosList?: NosApiShape[];
+  jobrole?: JobRoleDetailResponse;
+  jobRole?: JobRoleDetailResponse;
+  data?: JobRoleDetailResponse;
+};
+
+function getNosCode(nos: NosApiShape) {
+  return (
+    nos.code ||
+    nos.nos_code ||
+    nos.Code ||
+    nos.NOSCode ||
+    nos.NOS_CODE ||
+    ""
+  );
+}
+
+function getNosName(nos: NosApiShape) {
+  return nos.name || nos.nos_name || nos.Name || nos.NOSName || nos.NOS_NAME || "";
+}
 
 export default function QuestionsPage() {
   const dispatch = useAppDispatch();
@@ -68,6 +107,7 @@ export default function QuestionsPage() {
     hasPrev,
   } = useAppSelector((state) => state.questions);
   const { jobRoles } = useAppSelector((state) => state.jobRoles);
+  const { sectors } = useAppSelector((state) => state.sectors);
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -81,6 +121,7 @@ export default function QuestionsPage() {
     null
   );
   const [dragActive, setDragActive] = useState(false);
+  const [bulkSectorID, setBulkSectorID] = useState("");
   const [bulkJobRoleID, setBulkJobRoleID] = useState("");
   const [bulkNosList, setBulkNosList] = useState<NosSheetInfo[]>([]);
   const [bulkNosLoading, setBulkNosLoading] = useState(false);
@@ -91,10 +132,27 @@ export default function QuestionsPage() {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>(
     []
   );
+  const selectedBulkJobRole = useMemo(
+    () =>
+      jobRoles.find((jobRole) => String(jobRole.id) === String(bulkJobRoleID)),
+    [bulkJobRoleID, jobRoles]
+  );
+
+  // The bulk modal picks a sector first, which narrows the job role dropdown.
+  const bulkJobRoleOptions = useMemo(
+    () =>
+      bulkSectorID
+        ? jobRoles.filter(
+            (jobRole) => String(jobRole.sector_id) === bulkSectorID
+          )
+        : [],
+    [bulkSectorID, jobRoles]
+  );
 
   useEffect(() => {
     dispatch(fetchQuestions({ page: 1, limit: 10 }));
     dispatch(fetchJobRoles({ page: 1, limit: 1000 }));
+    dispatch(fetchSectors({ page: 1, limit: 1000 }));
   }, [dispatch]);
 
   useEffect(() => {
@@ -106,8 +164,9 @@ export default function QuestionsPage() {
     dispatch(clearError());
   }, [dispatch, error]);
 
-  // Load the selected job role's NOS list for the bulk template/import. The
-  // template creates one sheet per NOS (named by code); the code maps to nos_id.
+  // Load the selected job role's NOS list from GET /jobroles/{id}. Both template
+  // tabs get one pre-filled row per NOS code, and the code maps back to nos_id
+  // on import.
   useEffect(() => {
     if (!bulkJobRoleID) {
       setBulkNosList([]);
@@ -116,20 +175,21 @@ export default function QuestionsPage() {
 
     let active = true;
     setBulkNosLoading(true);
-    api
-      .get(`/jobroles/${bulkJobRoleID}`)
-      .then((response) => {
+    dispatch(fetchJobRoleById(bulkJobRoleID))
+      .unwrap()
+      .then((payload: JobRoleDetailResponse | undefined) => {
         const data =
-          response.data?.jobrole ?? response.data?.jobRole ?? response.data;
-        const list: JobRoleNos[] = data?.nos_list ?? [];
+          payload?.jobrole ?? payload?.jobRole ?? payload?.data ?? payload;
+        const list: NosApiShape[] =
+          data?.nos_list ?? data?.nosList ?? selectedBulkJobRole?.nos_list ?? [];
         if (active) {
           setBulkNosList(
             list
-              .filter((nos) => nos.id != null && (nos.code || nos.nos_code))
+              .filter((nos) => getNosCode(nos))
               .map((nos) => ({
-                id: nos.id as string | number,
-                code: String(nos.code || nos.nos_code),
-                name: nos.name,
+                id: nos.id ?? getNosCode(nos),
+                code: String(getNosCode(nos)),
+                name: getNosName(nos),
               }))
           );
         }
@@ -148,7 +208,7 @@ export default function QuestionsPage() {
     return () => {
       active = false;
     };
-  }, [bulkJobRoleID]);
+  }, [bulkJobRoleID, dispatch, selectedBulkJobRole?.nos_list]);
 
   const criticalErrors = useMemo(
     () => validationErrors.filter((item) => item.type === "error"),
@@ -175,6 +235,7 @@ export default function QuestionsPage() {
 
   const handleCloseBulk = () => {
     setBulkOpen(false);
+    setBulkSectorID("");
     setBulkJobRoleID("");
     setBulkNosList([]);
     setSelectedFile(null);
@@ -292,7 +353,10 @@ export default function QuestionsPage() {
       return;
     }
     try {
-      await downloadQuestionsTemplate(bulkNosList);
+      await downloadQuestionsTemplate(
+        bulkNosList,
+        selectedBulkJobRole?.name || `Job Role ${bulkJobRoleID}`
+      );
     } catch {
       toast.error("Failed to generate the template.");
     }
@@ -304,6 +368,11 @@ export default function QuestionsPage() {
     setParsedQuestions([]);
     setValidationErrors([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleBulkSectorChange = (sectorId: string) => {
+    setBulkSectorID(sectorId);
+    handleBulkJobRoleChange("");
   };
 
   const handleBulkImport = async () => {
@@ -588,10 +657,10 @@ export default function QuestionsPage() {
                   Bulk Import Questions
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Pick a job role, then download its template. Each NOS gets two
-                  sheets &mdash; `MCQ(&lt;code&gt;)` and `Rubric(&lt;code&gt;)`
-                  (rubric includes an `expected_answer`). Fill the rows and
-                  upload to import.
+                  Pick a sector and job role, then download its template. The
+                  workbook has one MCQ sheet and one Rubric sheet with all NOS
+                  rows listed. Fill the question columns next to the correct
+                  `Nos Code` and upload to import.
                 </p>
               </div>
               <button
@@ -605,6 +674,25 @@ export default function QuestionsPage() {
 
             <div className="mt-6 flex flex-col gap-2">
               <label className="ml-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Sector
+              </label>
+              <SearchableSelect
+                value={bulkSectorID}
+                onChange={handleBulkSectorChange}
+                placeholder="Select a sector"
+                searchPlaceholder="Search sectors…"
+                options={[
+                  { value: "", label: "Select a sector" },
+                  ...sectors.map((sector) => ({
+                    value: String(sector.id),
+                    label: sector.name,
+                  })),
+                ]}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2">
+              <label className="ml-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 Job Role For Imported Questions
               </label>
               <div className="flex items-stretch gap-2">
@@ -612,11 +700,16 @@ export default function QuestionsPage() {
                   <SearchableSelect
                     value={bulkJobRoleID}
                     onChange={handleBulkJobRoleChange}
-                    placeholder="Select a job role"
+                    disabled={!bulkSectorID}
+                    placeholder={
+                      bulkSectorID
+                        ? "Select a job role"
+                        : "Select a sector first"
+                    }
                     searchPlaceholder="Search job roles…"
                     options={[
                       { value: "", label: "Select a job role" },
-                      ...jobRoles.map((jobRole) => ({
+                      ...bulkJobRoleOptions.map((jobRole) => ({
                         value: String(jobRole.id),
                         label: jobRole.name || `Job Role ${jobRole.id}`,
                       })),
@@ -635,14 +728,17 @@ export default function QuestionsPage() {
                   Template
                 </button>
               </div>
+              {bulkSectorID && !bulkJobRoleOptions.length && (
+                <p className="ml-1 text-[11px] text-slate-500">
+                  No job roles found for this sector.
+                </p>
+              )}
               {bulkJobRoleID && (
                 <p className="ml-1 text-[11px] text-slate-500">
                   {bulkNosLoading
                     ? "Loading NOS..."
                     : bulkNosList.length
-                    ? `${bulkNosList.length} NOS (${
-                        bulkNosList.length * 2
-                      } sheets): ${bulkNosList
+                    ? `2 sheets with ${bulkNosList.length} NOS: ${bulkNosList
                         .map((nos) => nos.code)
                         .join(", ")}`
                     : "No NOS found for this job role."}

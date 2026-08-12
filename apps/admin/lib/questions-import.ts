@@ -18,9 +18,8 @@ export interface ParseResult {
   errors: ValidationError[];
 }
 
-// A NOS from the selected job role's nos_list. Each NOS becomes two sheets in
-// the template ("MCQ(<code>)" and "Rubric(<code>)"); the label + code maps a
-// sheet back to its nos_id and question type on import.
+// A NOS from the selected job role's nos_list. The current template keeps all
+// NOS in two tabs: one for MCQ rows and one for rubric rows.
 export type NosSheetInfo = {
   id: string | number;
   code: string;
@@ -35,8 +34,12 @@ const RUBRIC_LABEL = "Rubric";
 const MAX_SHEET_NAME = 31;
 // How many rows below the header get dropdowns wired up.
 const DROPDOWN_ROWS = 500;
+// Every sheet starts with its header row, then a sample row, then one row per NOS.
+const HEADER_ROW = 1;
+const FIRST_DATA_ROW = HEADER_ROW + 1;
 
 const MCQ_COLUMNS: ColumnDef[] = [
+  { header: "Nos Code", key: "nos_code", width: 18 },
   { header: "text", key: "text", width: 40 },
   { header: "difficulty_lvl", key: "difficulty_lvl", width: 16 },
   { header: "option_a", key: "option_a", width: 18 },
@@ -47,6 +50,7 @@ const MCQ_COLUMNS: ColumnDef[] = [
 ];
 
 const RUBRIC_COLUMNS: ColumnDef[] = [
+  { header: "Nos Code", key: "nos_code", width: 18 },
   { header: "text", key: "text", width: 40 },
   { header: "difficulty_lvl", key: "difficulty_lvl", width: 16 },
   { header: "expected_answer", key: "expected_answer", width: 40 },
@@ -108,6 +112,15 @@ function nosSheetName(code: string, label: string) {
   return `${label}(${base})`;
 }
 
+function sameTabSheetName(code: string, label: string) {
+  const base = sanitizeCodeBase(code).trim();
+  if (!base) {
+    return `${label}(All Questions)`;
+  }
+  const wrapperLength = label.length + 2;
+  return `${label}(${base.slice(0, MAX_SHEET_NAME - wrapperLength).trim()})`;
+}
+
 function columnLetter(index1Based: number) {
   let index = index1Based;
   let letter = "";
@@ -123,14 +136,15 @@ function addListValidation(
   worksheet: ExcelJS.Worksheet,
   columns: ColumnDef[],
   headerKey: string,
-  values: string[]
+  values: string[],
+  startRow = 2
 ) {
   const colIndex = columns.findIndex((column) => column.key === headerKey) + 1;
   if (colIndex <= 0) {
     return;
   }
   const letter = columnLetter(colIndex);
-  for (let row = 2; row <= DROPDOWN_ROWS + 1; row += 1) {
+  for (let row = startRow; row < startRow + DROPDOWN_ROWS; row += 1) {
     worksheet.getCell(`${letter}${row}`).dataValidation = {
       type: "list",
       allowBlank: true,
@@ -145,69 +159,81 @@ function addListValidation(
 function buildWorksheet(
   workbook: ExcelJS.Workbook,
   name: string,
-  columns: ColumnDef[],
-  exampleRow: Record<string, unknown>
+  columns: ColumnDef[]
 ) {
   const worksheet = workbook.addWorksheet(name);
-  worksheet.columns = columns.map((column) => ({
-    header: column.header,
-    key: column.key,
-    width: column.width,
-  }));
-  worksheet.getRow(1).font = { bold: true };
-  worksheet.views = [{ state: "frozen", ySplit: 1 }];
-  worksheet.addRow(exampleRow);
+  columns.forEach((column, index) => {
+    worksheet.getColumn(index + 1).key = column.key;
+    worksheet.getColumn(index + 1).width = column.width;
+  });
+
+  worksheet.addRow(columns.map((column) => column.header));
+  worksheet.getRow(HEADER_ROW).font = { bold: true };
+  worksheet.views = [{ state: "frozen", ySplit: HEADER_ROW }];
   return worksheet;
 }
 
-export async function downloadQuestionsTemplate(nosList: NosSheetInfo[]) {
+// The sample sits in the data area (first row under the header) so it shows the
+// exact shape an import row needs, NOS code included. It is styled like every
+// other data row.
+function addSampleRow(
+  worksheet: ExcelJS.Worksheet,
+  exampleRow: Record<string, unknown>,
+  nosCode: string
+) {
+  worksheet.addRow({ ...exampleRow, nos_code: nosCode });
+}
+
+export async function downloadQuestionsTemplate(
+  nosList: NosSheetInfo[],
+  jobRoleName?: string
+) {
   const workbook = new ExcelJS.Workbook();
-  const usedNames = new Set<string>();
+  const templateName = jobRoleName || "All Questions";
 
-  const uniqueName = (baseName: string) => {
-    let name = baseName;
-    let suffix = 2;
-    while (usedNames.has(name.toLowerCase())) {
-      name = `${baseName.slice(0, MAX_SHEET_NAME - 4)} (${suffix})`;
-      suffix += 1;
-    }
-    usedNames.add(name.toLowerCase());
-    return name;
-  };
+  const nosCodes = nosList.map(
+    (nos, index) => nos.code || `NOS-${nos.id ?? index + 1}`
+  );
+  const sampleNosCode = nosCodes[0] ?? "";
 
-  nosList.forEach((nos, index) => {
-    const code = nos.code || `NOS ${nos.id ?? index + 1}`;
+  const mcqSheet = buildWorksheet(
+    workbook,
+    sameTabSheetName(templateName, MCQ_LABEL),
+    MCQ_COLUMNS
+  );
+  const rubricSheet = buildWorksheet(
+    workbook,
+    sameTabSheetName(templateName, RUBRIC_LABEL),
+    RUBRIC_COLUMNS
+  );
 
-    const mcqSheet = buildWorksheet(
-      workbook,
-      uniqueName(nosSheetName(code, MCQ_LABEL)),
-      MCQ_COLUMNS,
-      MCQ_EXAMPLE_ROW
-    );
-    addListValidation(mcqSheet, MCQ_COLUMNS, "difficulty_lvl", [
-      "easy",
-      "medium",
-      "hard",
-    ]);
-    addListValidation(mcqSheet, MCQ_COLUMNS, "correct_option", [
-      "a",
-      "b",
-      "c",
-      "d",
-    ]);
+  addSampleRow(mcqSheet, MCQ_EXAMPLE_ROW, sampleNosCode);
+  addSampleRow(rubricSheet, RUBRIC_EXAMPLE_ROW, sampleNosCode);
 
-    const rubricSheet = buildWorksheet(
-      workbook,
-      uniqueName(nosSheetName(code, RUBRIC_LABEL)),
-      RUBRIC_COLUMNS,
-      RUBRIC_EXAMPLE_ROW
-    );
-    addListValidation(rubricSheet, RUBRIC_COLUMNS, "difficulty_lvl", [
-      "easy",
-      "medium",
-      "hard",
-    ]);
+  // Pre-fill one row per NOS of the selected job role on both tabs. This has to
+  // happen before addListValidation, which materialises DROPDOWN_ROWS rows and
+  // would otherwise push these rows below them.
+  nosCodes.forEach((nosCode) => {
+    mcqSheet.addRow({ nos_code: nosCode });
+    rubricSheet.addRow({ nos_code: nosCode });
   });
+
+  addListValidation(mcqSheet, MCQ_COLUMNS, "difficulty_lvl", [
+    "easy",
+    "medium",
+    "hard",
+  ], FIRST_DATA_ROW);
+  addListValidation(mcqSheet, MCQ_COLUMNS, "correct_option", [
+    "a",
+    "b",
+    "c",
+    "d",
+  ], FIRST_DATA_ROW);
+  addListValidation(rubricSheet, RUBRIC_COLUMNS, "difficulty_lvl", [
+    "easy",
+    "medium",
+    "hard",
+  ], FIRST_DATA_ROW);
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
@@ -275,26 +301,75 @@ function getSheetRows(
   workbook: XLSX.WorkBook,
   sheetName: string
 ): Record<string, unknown>[] {
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(
-    workbook.Sheets[sheetName]
+  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(
+    workbook.Sheets[sheetName],
+    {
+      header: 1,
+      defval: "",
+    }
   );
+  const headerRowIndex = rawRows.findIndex((row) => {
+    const normalizedHeaders = row.map((cell) =>
+      String(cell).trim().toLowerCase()
+    );
+    return (
+      normalizedHeaders.includes("text") &&
+      normalizedHeaders.includes("difficulty_lvl")
+    );
+  });
+
+  if (headerRowIndex < 0) {
+    return [];
+  }
+
+  const headers = rawRows[headerRowIndex].map((header) =>
+    String(header).trim()
+  );
+
+  return rawRows.slice(headerRowIndex + 1).map((row, rowIndex) => {
+    const mappedRow = headers.reduce<Record<string, unknown>>(
+      (accumulator, header, columnIndex) => {
+        if (header) {
+          accumulator[header] = row[columnIndex];
+        }
+        return accumulator;
+      },
+      { __rowNumber: headerRowIndex + rowIndex + 2 }
+    );
+
+    return {
+      ...mappedRow,
+      nos_code:
+        mappedRow.nos_code ?? mappedRow["Nos Code"] ?? mappedRow["Nos ID"],
+    };
+  });
 }
 
 function parseMcqSheet(
   rows: Record<string, unknown>[],
   errors: ValidationError[],
   sheetName: string,
-  nosId: number
+  nosIdForRow: number | ((row: Record<string, unknown>) => number | null)
 ): CreateQuestionInput[] {
   const questions: CreateQuestionInput[] = [];
 
   rows.forEach((row, rowIndex) => {
-    const prefix = `Sheet "${sheetName}" row ${rowIndex + 2}`;
+    const prefix = `Sheet "${sheetName}" row ${row.__rowNumber ?? rowIndex + 2}`;
     const text = String(row.text ?? "").trim();
     const difficulty = parseDifficulty(row.difficulty_lvl);
 
     if (!text && isEmpty(row.difficulty_lvl)) {
       return; // skip empty rows
+    }
+
+    const nosId =
+      typeof nosIdForRow === "function" ? nosIdForRow(row) : nosIdForRow;
+    if (!nosId) {
+      errors.push({
+        type: "error",
+        message: `${prefix}: Nos Code must match a NOS in the selected job role.`,
+      });
+      return;
     }
 
     if (!text) {
@@ -346,18 +421,28 @@ function parseRubricSheet(
   rows: Record<string, unknown>[],
   errors: ValidationError[],
   sheetName: string,
-  nosId: number
+  nosIdForRow: number | ((row: Record<string, unknown>) => number | null)
 ): CreateQuestionInput[] {
   const questions: CreateQuestionInput[] = [];
 
   rows.forEach((row, rowIndex) => {
-    const prefix = `Sheet "${sheetName}" row ${rowIndex + 2}`;
+    const prefix = `Sheet "${sheetName}" row ${row.__rowNumber ?? rowIndex + 2}`;
     const text = String(row.text ?? "").trim();
     const difficulty = parseDifficulty(row.difficulty_lvl);
     const expectedAnswer = String(row.expected_answer ?? "").trim();
 
     if (!text && isEmpty(row.difficulty_lvl)) {
       return; // skip empty rows
+    }
+
+    const nosId =
+      typeof nosIdForRow === "function" ? nosIdForRow(row) : nosIdForRow;
+    if (!nosId) {
+      errors.push({
+        type: "error",
+        message: `${prefix}: Nos Code must match a NOS in the selected job role.`,
+      });
+      return;
     }
 
     if (!text) {
@@ -420,7 +505,23 @@ export function parseQuestionsExcelFile(
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
   const errors: ValidationError[] = [];
 
-  // Map each canonical sheet name (normalized) to its NOS id + question type.
+  const nosCodeMap = new Map<string, number>();
+  nosList.forEach((nos) => {
+    if (nos.code) {
+      nosCodeMap.set(String(nos.code).trim().toLowerCase(), Number(nos.id));
+    }
+  });
+
+  const resolveNosId = (row: Record<string, unknown>) => {
+    const nosCode = String(row.nos_code ?? "").trim().toLowerCase();
+    if (!nosCode) {
+      return null;
+    }
+    return nosCodeMap.get(nosCode) ?? null;
+  };
+
+  // Map each old canonical sheet name (normalized) to its NOS id + question
+  // type. This keeps previously downloaded per-NOS templates importable.
   const sheetMap = new Map<string, { nosId: number; type: "mcq" | "rubric" }>();
   nosList.forEach((nos) => {
     if (!nos.code) {
@@ -441,21 +542,31 @@ export function parseQuestionsExcelFile(
   let matchedSheets = 0;
 
   workbook.SheetNames.forEach((sheetName) => {
-    const target = sheetMap.get(sheetName.trim().toLowerCase());
-    if (!target) {
+    const normalizedSheetName = sheetName.trim().toLowerCase();
+    const target = sheetMap.get(normalizedSheetName);
+    const isMcqTab = normalizedSheetName.startsWith(`${MCQ_LABEL.toLowerCase()}(`);
+    const isRubricTab = normalizedSheetName.startsWith(
+      `${RUBRIC_LABEL.toLowerCase()}(`
+    );
+
+    if (!target && !isMcqTab && !isRubricTab) {
       errors.push({
         type: "warning",
-        message: `Sheet "${sheetName}" is not a "MCQ(<NOS code>)" or "Rubric(<NOS code>)" sheet for the selected job role and was skipped.`,
+        message: `Sheet "${sheetName}" is not a "MCQ(...)" or "Rubric(...)" sheet and was skipped.`,
       });
       return;
     }
 
     matchedSheets += 1;
     const rows = getSheetRows(workbook, sheetName);
-    if (target.type === "mcq") {
+    if (target?.type === "mcq") {
       questions.push(...parseMcqSheet(rows, errors, sheetName, target.nosId));
-    } else {
+    } else if (target?.type === "rubric") {
       questions.push(...parseRubricSheet(rows, errors, sheetName, target.nosId));
+    } else if (isMcqTab) {
+      questions.push(...parseMcqSheet(rows, errors, sheetName, resolveNosId));
+    } else {
+      questions.push(...parseRubricSheet(rows, errors, sheetName, resolveNosId));
     }
   });
 
@@ -463,7 +574,7 @@ export function parseQuestionsExcelFile(
     errors.push({
       type: "error",
       message:
-        "No sheet matched a NOS for the selected job role. Download the template to get correctly named MCQ/Rubric sheets.",
+        "No MCQ or Rubric sheet matched. Download the template to get correctly named sheets.",
     });
   }
 
